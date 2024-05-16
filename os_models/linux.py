@@ -10,8 +10,8 @@ class Linux(OsFileHandler):
 
     def __init__(self):
         super().__init__()
-        self.stdin_fd = self.open("__stdin",  "r--")
-        self.stdout_fd = self.open("__stdout", "-w-")
+        self.stdin_fd = self.open("__stdin",  "r--", size=0, template = None)
+        self.stdout_fd = self.open("__stdout", "-w-", size=0, template = None)
 
     def get_syscall_by_number(self, n: int):
         if n not in self.SYSCALL_TABLE:
