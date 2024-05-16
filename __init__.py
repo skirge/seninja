@@ -31,6 +31,9 @@ from .globals import Globals
 from .ui.ui_manager import UIManager
 from .ui.seninja_widget import SENinjaWidgetType
 
+import sys
+sys.set_int_max_str_digits(0)
+
 Globals.uimanager = UIManager()
 
 Sidebar.addSidebarWidgetType(SENinjaWidgetType())
