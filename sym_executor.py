@@ -1,8 +1,9 @@
 import sys
+import traceback
 
 from binaryninja import (
     BinaryReader, BinaryWriter,
-    RegisterValueType
+    RegisterValueType, enums
 )
 from .sym_visitor import SymbolicVisitor
 from .sym_state import State
@@ -16,9 +17,12 @@ from .memory.sym_memory import InitData
 from .multipath.fringe import Fringe
 from .globals import logger
 
-class SymbolicExecutor(object):
-    def __init__(self, view, addr):
+HIGHLIGHTED_HISTORY_COLOR = enums.HighlightStandardColor.YellowHighlightColor
 
+class SymbolicExecutor(object):
+    def __init__(self, view, addr, ui):
+
+        self.ui = ui # for highlighting
         self.view = view
         self.bw = BinaryWriter(view)
         self.br = BinaryReader(view)
@@ -253,14 +257,30 @@ class SymbolicExecutor(object):
         return True
 
     def update_ip(self, funcion_name, new_llil_ip):
+        if new_llil_ip is None:
+            raise exceptions.UnconstrainedIp(self.ip)
+
         self.llil_ip = new_llil_ip
         self.ip = self.bncache.get_address(funcion_name, new_llil_ip)
         self.state.set_ip(self.ip)
         self.state.llil_ip = new_llil_ip
 
+    def color_block(self, func, ip, color):
+        func.set_auto_instr_highlight(ip, color)
+        blocks = self.view.get_basic_blocks_at(ip)
+        for block in blocks:
+            block.set_auto_highlight(color)
+
     def _update_state_history(self, state, addr):
+        # print(f"Updating state history for addr={hex(addr)}")
         if self.bncache.get_setting("save_state_history") == 'true':
             state.insn_history.add(addr)
+        func = self.bncache.get_function(addr)
+        if func is not None:
+            self.color_block(func, addr, HIGHLIGHTED_HISTORY_COLOR)
+        else: 
+            print(f"Function for address {addr} not found!")
+        self.ui.update_history_highlight(addr)
 
     def _execute_one(self):
         self._last_error = None
@@ -374,8 +394,9 @@ class SymbolicExecutor(object):
             import os
             _, _, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.log_error("Unknown exception in SymbolicExecutor.execute_one():")
+            logger.log_error(f"Unknown exception in SymbolicExecutor.execute_one() at {hex(self.ip)}:")
             logger.log_error(" ".join(map(str, ["\t", repr(e), fname, exc_tb.tb_lineno, "\n"])))
+            logger.log_error(traceback.format_exc())
             self.put_in_errored(self.state, "Unknown error")
             self.state = None
             res = None
