@@ -52,6 +52,10 @@ class UnconstrainedIp(SENinjaError):
         self.message = "unconstrained ip"
         super().__init__(self.message)
 
+    def __init__(self, ip):
+        self.message = f"unconstrained ip @ {hex(ip)}"
+        super().__init__(self.message)
+
     def is_fatal(self):
         return False
 
@@ -87,9 +91,10 @@ class UnimplementedInstruction(SENinjaError):
 
 
 class UnimplementedModel(SENinjaError):
-    def __init__(self, f_name):
+    def __init__(self, f_name, ip):
         self.f_name = f_name
-        self.message = "unimplemented model for function %s" % f_name
+        self.ip = ip
+        self.message = "unimplemented model for function %s @ %#x" % (f_name, ip)
         super().__init__(self.message)
 
     def is_fatal(self):

@@ -42,6 +42,8 @@ class BNCache(object):
         if function is None:
             return None
         function_name = function.name
+        if function_name[0] == "_":
+            function_name = function_name[1:]
         self.func_name_cache[address] = function_name
         self.name_to_func_cache[function_name] = function
         return function_name
