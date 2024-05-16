@@ -70,3 +70,45 @@ def get_address_after_merge(view, address):
     llil = func.llil.get_instruction_start(address, func.arch)
     return func.llil[llil].address
 
+
+class MockValue(object):
+
+    def __init__(self, v):
+        self.value = v
+
+class MockSymbol(object):
+
+    def __init__(self, v):
+        self.address = v
+
+def get_from_code_refs(view, ip):
+    addrs = view.get_code_refs_from(ip)
+    # TODO: improve this
+    addr = 0
+    # TODO: may ask user to select one if more functions were found
+    for a in addrs:
+        if a != 0x0:
+            addr = a
+            break
+    if addr != 0:
+        sym = view.get_symbol_at(addr)
+        return sym
+
+def get_from_type_refs(view, ip):
+    refs = view.get_code_refs_for_type_fields_from(ip)
+    if refs:
+        # TODO: What if more than one?
+        t = refs[0]
+        tt = view.types[t.name]
+        if tt is None:
+            raise Exception(f"Type references not found in view:{t}")
+        m = None
+        for mm in tt.members:
+            if t.offset == mm.offset:
+                m = mm
+        if m is None:
+            raise Exception(f"Member not found in type:{t}")
+        if m.name in view.symbols:
+            return view.symbols[m.name][0]
+        else:
+            return MockSymbol(0xDEADC0DE)

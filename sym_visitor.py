@@ -9,6 +9,12 @@ from .utility.exceptions import (
 )
 from .expr import BV, BVV, Bool, BoolV, ITE, And, Or
 from .globals import logger
+from .utility.bninja_util import (
+    get_from_code_refs,
+    get_from_type_refs,
+    MockValue,
+    MockSymbol
+)
 
 
 class BNILVisitor(object):
@@ -451,26 +457,37 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_CALL(self, expr):
         dest = self.visit(expr.dest)
+        dest_fun_name = None
 
-        if symbolic(dest):
-            raise UnconstrainedIp()
+        sym = get_from_code_refs(self.executor.view, self.executor.ip)
+        if sym is None:
+            sym = get_from_type_refs(self.executor.view, self.executor.ip)
+            if sym is not None:
+                dest = MockValue(sym.address)
+                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+        else:
+            dest = MockValue(sym.address)
+            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
 
+        if dest_fun_name is None and symbolic(dest):
+            raise UnconstrainedIp(self.executor.ip)
+        
         curr_fun_name = self.executor.bncache.get_function_name(
             self.executor.ip)
-        if dest.value in self.executor.imported_functions:
-            dest_fun_name = self.executor.imported_functions[dest.value]
-        else:
-            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+        if dest_fun_name is None:
+            if dest.value in self.executor.imported_functions:
+                dest_fun_name = self.executor.imported_functions[dest.value]
+            else:
+                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         if dest_fun_name is None:
             # Last chance, look in symbols
             sym = self.executor.view.get_symbol_at(dest.value)
             if sym is None:
                 raise Exception("Unable to find function name @ 0x%x" % dest.value)
-
             # If we are here, it is for sure a library function
             dest_fun_name = sym.name
             if dest_fun_name not in library_functions:
-                raise UnimplementedModel(dest_fun_name)
+                raise UnimplementedModel(dest_fun_name, self.executor.ip)
 
         ret_addr = self.executor.ip + \
             self.executor.bncache.get_instruction_len(self.executor.ip)
@@ -483,7 +500,7 @@ class SymbolicVisitor(BNILVisitor):
         if dest_fun_name in library_functions:
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-
+            print(f"Running {dest_fun_name} builtin handler: {res}")
             try:
                 dest_fun = self.executor.bncache.get_function(dest.value)
                 calling_convention = dest_fun.calling_convention
@@ -503,8 +520,10 @@ class SymbolicVisitor(BNILVisitor):
         # check if imported
         elif dest.value in self.executor.imported_functions:
             name = self.executor.imported_functions[dest.value]
+            if name[0]=='_':
+                name = name[1:]
             if name not in library_functions:
-                raise UnimplementedModel(name)
+                raise UnimplementedModel(name, self.executor.ip)
 
             res = library_functions[name](
                 self.executor.state, self.executor.view)
@@ -527,14 +546,26 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_TAILCALL(self, expr):
         dest = self.visit(expr.dest)
+        dest_fun_name = None
 
-        if symbolic(dest):
-            raise UnconstrainedIp()
-
-        if dest.value in self.executor.imported_functions:
-            dest_fun_name = self.executor.imported_functions[dest.value]
+        sym = get_from_code_refs(self.executor.view, self.executor.ip)
+        if sym is None:
+            sym = get_from_type_refs(self.executor.view, self.executor.ip)
+            if sym is not None:
+                dest = MockValue(sym.address)
+                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         else:
+            dest = MockValue(sym.address)
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+
+        if dest_fun_name is None and symbolic(dest):
+            raise UnconstrainedIp(self.executor.ip)
+
+        if dest_fun_name is None: 
+            if dest.value in self.executor.imported_functions:
+                dest_fun_name = self.executor.imported_functions[dest.value]
+            else:
+                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         if dest_fun_name is None:
             # Last chance, look in symbols
             sym = self.executor.view.get_symbol_at(dest.value)
@@ -543,13 +574,13 @@ class SymbolicVisitor(BNILVisitor):
             # If we are here, it is for sure a library function
             dest_fun_name = sym.name
             if dest_fun_name not in library_functions:
-                raise UnimplementedModel(dest_fun_name)
+                raise UnimplementedModel(dest_fun_name, self.executor.ip)
 
         # check if we have an handler
         if dest_fun_name in library_functions:
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-
+            print(f"Running {dest_fun_name} builtin handler: {res}")
             calling_convention = "cdecl"
             dest_fun = self.executor.bncache.get_function(dest.value)
             if dest_fun is not None:
@@ -560,15 +591,17 @@ class SymbolicVisitor(BNILVisitor):
             # retrive return address
             dest = self.executor.arch.get_return_address(self.executor.state)
             if symbolic(dest):
-                raise UnconstrainedIp()
+                raise UnconstrainedIp(self.executor.ip)
 
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
 
         # check if imported
         if dest.value in self.executor.imported_functions:
             name = self.executor.imported_functions[dest.value]
+            if name[0]=='_':
+                name = name[1:]
             if name not in library_functions:
-                raise UnimplementedModel(name)
+                raise UnimplementedModel(name, self.executor.ip)
 
             res = library_functions[name](
                 self.executor.state, self.executor.view)
@@ -580,7 +613,7 @@ class SymbolicVisitor(BNILVisitor):
             # retrive return address
             dest = self.executor.arch.get_return_address(self.executor.state)
             if symbolic(dest):
-                raise UnconstrainedIp()
+                raise UnconstrainedIp(self.executor.ip)
 
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
 
@@ -868,7 +901,7 @@ class SymbolicVisitor(BNILVisitor):
             if num_ips == 256:
                 self.executor.put_in_errored(
                     self.executor.state, "Probably unconstrained IP")
-                raise UnconstrainedIp()
+                raise UnconstrainedIp(self.executor.ip)
             if num_ips == 0:
                 self.executor.put_in_errored(
                     self.executor.state, "No valid destination")
@@ -891,11 +924,11 @@ class SymbolicVisitor(BNILVisitor):
             dest_ip = dest.value
 
         dest_fun_name = self.executor.bncache.get_function_name(dest_ip)
-        self.executor.update_ip(
-            dest_fun_name, self.executor.bncache.get_llil_address(dest_fun_name, dest_ip))
-
-        self.executor._wasjmp = True
-        return True
+        if dest_fun_name is not None:
+            self.executor.update_ip(
+                dest_fun_name, self.executor.bncache.get_llil_address(dest_fun_name, dest_ip))
+            self.executor._wasjmp = True
+            return True
 
     def visit_LLIL_PUSH(self, expr):
         src = self.visit(expr.src)
