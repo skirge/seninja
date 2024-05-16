@@ -12,6 +12,10 @@ def time_handler(state: State, view):
 
     return res
 
+def gmtime_handler(state: State, view):
+    # TODO
+    res = BVS('gmtime_res',32)
+    return res
 
 pid_cache = None
 
