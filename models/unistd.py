@@ -25,7 +25,7 @@ def read_handler(state: State, view):
     else:
         count = count.value
 
-    res = state.os.read(fd, count)
+    _, res = state.os.read(fd, count)
     for i, b in enumerate(res):
         state.mem.store(buf + i, b)
 

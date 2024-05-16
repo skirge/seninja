@@ -7,7 +7,13 @@ class Os(object):
         return None
     # devices
 
-    def open(self, filename, mode):
+    def open(self, filename, mode, size, template):
+        raise NotImplementedError
+
+    def seek(self, fd, size):
+        raise NotImplementedError
+
+    def file_size(self, fd):
         raise NotImplementedError
 
     def read(self, fd, size):
