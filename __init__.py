@@ -31,6 +31,9 @@ from .globals import uimanager_registry
 from .ui.ui_manager import UIManager
 from .ui.seninja_widget import SENinjaWidgetType
 
+import sys
+sys.set_int_max_str_digits(0)
+
 Sidebar.addSidebarWidgetType(SENinjaWidgetType())
 
 PluginCommand.register(
