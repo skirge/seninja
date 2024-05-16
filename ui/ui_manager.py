@@ -111,12 +111,17 @@ class UIManager(object):
         log_alert("SENinja not running")
         return False
 
+    def update_history_highlight(self, ip):
+        if ip != 0:
+            self.highlighted_state_history.append(ip)
+
     def reset_state_history_highlight(self):
         if len(self.highlighted_state_history) > 0:
             # Remove highlight
             for insn in self.highlighted_state_history:
                 func = self.executor.bncache.get_function(insn)
-                func.set_auto_instr_highlight(insn, UIManager.NO_COLOR)
+                if func is not None:
+                    self.color_block(func, insn, UIManager.NO_COLOR)
             self.highlighted_state_history = list()
 
     def _initialize_ui(self):
@@ -128,7 +133,8 @@ class UIManager(object):
         if not self.symbolic_started():
             return
 
-        self.reset_state_history_highlight()
+        # TODO: don't clean all history highlights
+        #self.reset_state_history_highlight()
         self._set_colors()
         if self.executor.state is not None:
             self.widget.updateStateSignal.emit(self.executor.state)
@@ -148,6 +154,12 @@ class UIManager(object):
         func = self.executor.bncache.get_function(address)
         func.set_comment_at(address, None)
 
+    def color_block(self, func, ip, color):
+        func.set_auto_instr_highlight(ip, color)
+        blocks = self.executor.view.get_basic_blocks_at(ip)
+        for block in blocks:
+            block.set_auto_highlight(color)
+
     def _set_colors(self, reset=False):
         if not self.symbolic_started():
             return
@@ -155,12 +167,10 @@ class UIManager(object):
         old_ip = self.executor._last_colored_ip
         if old_ip is not None:
             old_func = self.executor.bncache.get_function(old_ip)
-            old_func.set_auto_instr_highlight(old_ip, UIManager.NO_COLOR)
-
+            self.color_block(old_func, old_ip, UIManager.NO_COLOR)
         for ip in self.executor.fringe._deferred:
             func = self.executor.bncache.get_function(ip)
-            func.set_auto_instr_highlight(
-                ip, UIManager.DEFERRED_STATE_COLOR if not reset else UIManager.NO_COLOR)
+            self.color_block(func, ip,UIManager.DEFERRED_STATE_COLOR if not reset else UIManager.NO_COLOR)
             if reset:
                 func.set_comment_at(ip, None)
             elif len(self.executor.fringe._deferred[ip]) > 1 or (len(self.executor.fringe._deferred[ip]) == 1 and self.executor.ip == ip):
@@ -169,13 +179,10 @@ class UIManager(object):
 
         for _, state in self.executor.fringe.errored:
             func = self.executor.bncache.get_function(state.get_ip())
-            func.set_auto_instr_highlight(
-                state.get_ip(), UIManager.ERRORED_STATE_COLOR if not reset else UIManager.NO_COLOR)
-
+            self.color_block(func, state.get_ip(), UIManager.ERRORED_STATE_COLOR if not reset else UIManager.NO_COLOR)
         if self.executor.state:
             func = self.executor.bncache.get_function(self.executor.ip)
-            func.set_auto_instr_highlight(
-                self.executor.ip, UIManager.CURR_STATE_COLOR if not reset else UIManager.NO_COLOR)
+            self.color_block(func, self.executor.ip, UIManager.CURR_STATE_COLOR if not reset else UIManager.NO_COLOR)
         if not reset:
             self.executor._last_colored_ip = self.executor.ip
 
@@ -187,7 +194,7 @@ class UIManager(object):
 
         address = self.bv.file.offset
         try:
-            self.executor = SymbolicExecutor(self.bv, address)
+            self.executor = SymbolicExecutor(self.bv, address, self)
         except SENinjaError as e:
             sys.stderr.write(e.message + "\n")
             return
@@ -271,7 +278,7 @@ class UIManager(object):
             def callback(s):
                 if s is None:
                     return False
-                tb.progress = "SENinja: running DFS @ %s" % hex(s.get_ip())
+                tb.progress = "SENinja: running DFS @ %s, %s" % (hex(s.get_ip()), self.executor.view.get_functions_containing(s.get_ip())[0].name)
                 if timeout > 0 and time.time() - start > timeout:
                     sys.stderr.write("SENinja: Timeout elapsed (%d sec)\n" % timeout)
                     return False
@@ -308,7 +315,7 @@ class UIManager(object):
             def callback(s):
                 if s is None:
                     return False
-                tb.progress = "SENinja: running BFS @ %s" % hex(s.get_ip())
+                tb.progress = "SENinja: running BFS @ %s, %s" % (hex(s.get_ip()), self.executor.view.get_functions_containing(s.get_ip())[0].name)
                 if timeout > 0 and time.time() - start > timeout:
                     sys.stderr.write("SENinja: Timeout elapsed (%d sec)\n" % timeout)
                     return False
@@ -374,7 +381,7 @@ class UIManager(object):
                 count = (count+1) % 20
                 if count == 0:
                     self._set_colors()
-                tb.progress = "SENinja: continue until branch: %s" % hex(ip)
+                tb.progress = "SENinja: continue until branch: %s, %s" % (hex(ip), self.executor.view.get_functions_containing(ip)[0].name)
 
             self._sync_ui(self.executor._last_error == None)
             self.running = False
@@ -417,7 +424,7 @@ class UIManager(object):
                 count = (count+1) % 20
                 if count == 0:
                     self._set_colors()
-                tb.progress = "SENinja: continue until address: %s" % hex(ip)
+                tb.progress = "SENinja: continue until address: %s, %s" % (hex(ip), self.executor.view.get_functions_containing(ip)[0].name)
 
             self._sync_ui(self.executor._last_error == None)
             self.running = False
