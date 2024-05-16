@@ -9,6 +9,11 @@ def reval_model(val, nbits):
     return lambda state, view: BVV(val, nbits)
 
 library_functions = {
+    'CRC32': models_libc.crc32,
+    'free':           models_libc.free_handler,
+    '_free':           models_libc.free_handler,
+    '_stack_chk_fail': models_libc.stack_chk_fail_handler,
+    'stack_chk_fail': models_libc.stack_chk_fail_handler,
     'printf':           models_libc.printf_handler,
     '__printf_chk':     models_libc.printf_chk_handler,
     'scanf':            models_libc.scanf_handler,
@@ -34,6 +39,7 @@ library_functions = {
     'memcmp':           models_string.memcmp_handler,
     'memset':           models_string.memset_handler,
     'time':             models_other.time_handler,
+    'gmtime_r':             models_other.gmtime_handler,
     'stat':             models_unistd.stat_handler,
     '__xstat':          models_unistd.xstat_handler,
     'exit':             models_libc.exit_handler,

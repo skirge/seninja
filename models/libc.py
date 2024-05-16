@@ -2,7 +2,7 @@ from ..sym_state import State
 from ..utility.expr_wrap_util import symbolic
 from ..expr import BVV, BVS, BoolV, ITE, Or, And
 from ..utility.models_util import get_arg_k
-from ..utility.exceptions import ExitException, ModelError
+from ..utility.exceptions import ExitException, ModelError, UnimplementedModel
 from ..utility.string_util import as_bytes, str_to_bv_list
 from ..memory.sym_memory import InitData
 import re
@@ -201,7 +201,7 @@ def getchar_handler(state: State, view):
         "getchar called"
     )
 
-    v = state.os.read(state.os.stdin_fd, 1)
+    _, v = state.os.read(state.os.stdin_fd, 1)
     return v[0]
 
 
@@ -289,6 +289,7 @@ def sscanf_handler(state: State, view):
         state.mem.store(sptr+off, b)
     return res
 
+
 def fgets_handler(state: State, view):
     s_p = get_arg_k(state, 1, state.arch.bits() // 8, view)
     size = get_arg_k(state, 2, 4, view)
@@ -305,7 +306,10 @@ def fgets_handler(state: State, view):
 
     for i in range(actual_size):
         # TODO get correct FD
-        v = state.os.read(state.os.stdin_fd, 1)[0]
+        _, v = state.os.read(buff_fd, 1)
+        if not v:
+            break
+        v = v[0]
         state.mem.store(s_p + i, v)
     state.mem.store(s_p + actual_size, BVV(0, 8))
 
@@ -459,6 +463,13 @@ def calloc_handler(state: State, view):
     )
     return BVV(res, state.arch.bits())
 
+def free_handler(state: State, view):
+    return BVV(0, state.arch.bits())
+
+def stack_chk_fail_handler(state: State, view):
+    # TODO: add flag to search for this functions, report as stack overflow!
+    return BVV(0, state.arch.bits())
+
 # ***************************************
 
 # ********* MISC MODELS *********
@@ -467,4 +478,12 @@ def ptrace_handler(state: State, view):
     # Just a stub to trick anti-debug code
     return BVV(1, 32)
 
+def false(state: State, view):
+    return BVV(0, 32)
+
+def true(state: State, view):
+    return BVV(1, 32)
+
+def crc32(state: State, view):
+    raise ValueError("found CRC32 on path!")
 # ***************************************
