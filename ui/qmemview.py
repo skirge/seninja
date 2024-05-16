@@ -167,7 +167,8 @@ class QMemView(QAbstractScrollArea):
             self.viewport().update()
         if self.customMenu is not None and event.buttons() & Qt.RightButton:
             menu = self.customMenu()
-            menu.exec_(self.mapToGlobal(event.pos()))
+            if menu is not None:
+                menu.exec_(self.mapToGlobal(event.pos()))
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if not self.enabled:

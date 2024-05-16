@@ -248,6 +248,7 @@ class MemoryView(QWidget):
 
     def on_customContextMenuRequested(self):
         if self.data.current_state is None:
+            print("Cannot invoke menu without state")
             return
         menu = QMenu(self)
 
