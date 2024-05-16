@@ -14,7 +14,8 @@ from .utility.bninja_util import (
     parse_disasm_str,
     get_from_code_refs,
     get_from_type_refs,
-    MockValue
+    MockValue,
+    MockSymbol
 )
 
 
@@ -496,6 +497,7 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_CALL(self, expr,level):
         dest = self.visit(expr.dest,level+1)
+        dest_fun_name = None
 
         sym = get_from_code_refs(self.executor.view, self.executor.ip)
         if sym is None:
@@ -509,9 +511,6 @@ class SymbolicVisitor(BNILVisitor):
 
         if dest_fun_name is None and symbolic(dest):
             raise UnconstrainedIp(self.executor.ip)
-
-        if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
-            dest.value = dest.value - 1
 
         if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
             dest.value = dest.value - 1
