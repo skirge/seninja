@@ -24,16 +24,18 @@ class BNILVisitor(object):
     def __init__(self, **kw):
         super(BNILVisitor, self).__init__()
 
-    def visit(self, expression):
+    def visit(self, expression, level=0):
         if isinstance(expression, ILRegister):
             # direct register reference
             return getattr(self.executor.state.regs, expression.name)
-        
+
         method_name = 'visit_{}'.format(expression.operation.name)
+        logger.log_debug(f"{' '*level}>{method_name}: expression={expression}")
         if hasattr(self, method_name):
-            value = getattr(self, method_name)(expression)
+            value = getattr(self, method_name)(expression,level+1)
         else:
             raise UnimplementedInstruction(expression.operation.name, self.executor.state.get_ip())
+        logger.log_debug(f"{' '*level}>{method_name}:value={value}")
         return value
 
 
@@ -56,15 +58,15 @@ class SymbolicVisitor(BNILVisitor):
 
     # --- HANDLERS ---
 
-    def visit_LLIL_CONST(self, expr):
+    def visit_LLIL_CONST(self, expr,level):
         return BVV(expr.constant, max(expr.size, 1) * 8)
 
-    def visit_LLIL_CONST_PTR(self, expr):
+    def visit_LLIL_CONST_PTR(self, expr,level):
         return BVV(expr.constant, self.executor.arch.bits())
 
-    def visit_LLIL_SET_REG(self, expr):
+    def visit_LLIL_SET_REG(self, expr,level):
         dest = expr.dest.name
-        src = self.visit(expr.src)
+        src = self.visit(expr.src,level+1)
 
         if isinstance(src, Bool):
             src = ITE(
@@ -84,18 +86,18 @@ class SymbolicVisitor(BNILVisitor):
         setattr(self.executor.state.regs, dest, src)
         return True
 
-    def visit_LLIL_REG(self, expr):
+    def visit_LLIL_REG(self, expr,level):
         src = expr.src
         return getattr(self.executor.state.regs, src.name)
 
-    def visit_LLIL_REG_SPLIT(self, expr):
+    def visit_LLIL_REG_SPLIT(self, expr,level):
         lo = getattr(self.executor.state.regs, expr.lo.name)
         hi = getattr(self.executor.state.regs, expr.hi.name)
 
         return hi.Concat(lo)
 
-    def visit_LLIL_SET_REG_SPLIT(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_SET_REG_SPLIT(self, expr,level):
+        src = self.visit(expr.src,level+1)
         lo = expr.lo.name
         hi = expr.hi.name
 
@@ -106,9 +108,9 @@ class SymbolicVisitor(BNILVisitor):
         setattr(self.executor.state.regs, hi, hi_val)
         return True
 
-    def visit_LLIL_SET_FLAG(self, expr):
+    def visit_LLIL_SET_FLAG(self, expr,level):
         dest = expr.dest.name
-        src = self.visit(expr.src)
+        src = self.visit(expr.src,level+1)
 
         if isinstance(src, Bool):
             res = ITE(src, BVV(1, 1), BVV(0, 1))
@@ -117,19 +119,19 @@ class SymbolicVisitor(BNILVisitor):
         self.executor.state.regs.flags[dest] = res
         return True
 
-    def visit_LLIL_FLAG(self, expr):
+    def visit_LLIL_FLAG(self, expr,level):
         src = expr.src.name
         return self.executor.state.regs.flags[src]
 
-    def visit_LLIL_LOW_PART(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_LOW_PART(self, expr,level):
+        src = self.visit(expr.src,level+1)
         size = expr.size
 
         return src.Extract(size*8-1, 0)
 
-    def visit_LLIL_ADD(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ADD(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if right.size > left.size:
             left = left.SignExt(right.size - left.size)
@@ -138,10 +140,10 @@ class SymbolicVisitor(BNILVisitor):
 
         return left + right
 
-    def visit_LLIL_ADC(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
-        carry = self.visit(expr.carry)
+    def visit_LLIL_ADC(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
+        carry = self.visit(expr.carry,level+1)
 
         if right.size > left.size:
             left = left.SignExt(right.size - left.size)
@@ -150,9 +152,9 @@ class SymbolicVisitor(BNILVisitor):
 
         return left + right + carry.ZeroExt(left.size - 1)
 
-    def visit_LLIL_ADD_OVERFLOW(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ADD_OVERFLOW(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         # add with one more bit
         res = (BVV(0, 1).Concat(left) + BVV(0, 1).Concat(right))
@@ -160,9 +162,9 @@ class SymbolicVisitor(BNILVisitor):
         res = res.Extract(left.size, left.size)
         return res
 
-    def visit_LLIL_SUB(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_SUB(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if right.size > left.size:
             left = left.SignExt(right.size - left.size)
@@ -171,10 +173,10 @@ class SymbolicVisitor(BNILVisitor):
 
         return left - right
 
-    def visit_LLIL_SBB(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
-        carry = self.visit(expr.carry)
+    def visit_LLIL_SBB(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
+        carry = self.visit(expr.carry,level+1)
 
         if right.size > left.size:
             left = left.SignExt(right.size - left.size)
@@ -185,9 +187,9 @@ class SymbolicVisitor(BNILVisitor):
 
         return left - (right + carry)
 
-    def visit_LLIL_MUL(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_MUL(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if right.size > left.size:
             left = left.SignExt(right.size - left.size)
@@ -196,27 +198,56 @@ class SymbolicVisitor(BNILVisitor):
 
         return left * right
 
-    def visit_LLIL_MULS_DP(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_MULS_DP(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == right.size, f"MULS_DP size mismatch: {left.size} != {right.size}"
         left = left.SignExt(left.size)
         right = right.SignExt(right.size)
         return left * right
 
-    def visit_LLIL_MULU_DP(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_MULU_DP(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == right.size, f"MULU_DP size mismatch: {left.size} != {right.size}"
         left = left.ZeroExt(left.size)
         right = right.ZeroExt(right.size)
         return left * right
 
-    def visit_LLIL_DIVU_DP(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_DIVU(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
+
+        #assert left.size == right.size
+
+        check_division_by_zero = self.executor.bncache.get_setting(
+            "check_division_by_zero") == 'true'
+
+        right = right.ZeroExt(left.size - right.size)
+        if check_division_by_zero and self.executor.state.solver.satisfiable(extra_constraints=[right == 0]):
+            print("WARNING: division by zero detected")
+            errored = self.executor.state.copy(solver_copy_fast=True)
+            errored.solver.add_constraints(right == 0)
+            self.executor.put_in_errored(
+                errored,
+                "DIVU at %s (%d LLIL) division by zero" % (
+                    hex(errored.get_ip()), self.executor.llil_ip)
+            )
+
+        self.executor.state.solver.add_constraints(right != 0)
+        if not self.executor.state.solver.satisfiable():
+            self.executor.put_in_errored(
+                self.executor.state, "division by zero")
+            raise DivByZero(self.executor.state.get_ip())
+
+        div = left.UDiv(right)
+        return div.Extract(expr.size * 8 - 1, 0)
+
+    def visit_LLIL_DIVU_DP(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == 2*right.size, f"DIVU_DP size mismatch: {left.size} != 2*{right.size}"
 
@@ -243,9 +274,9 @@ class SymbolicVisitor(BNILVisitor):
         div = left.UDiv(right)
         return div.Extract(expr.size * 8 - 1, 0)
 
-    def visit_LLIL_DIVS_DP(self, expr):  # is it correct?
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_DIVS_DP(self, expr,level):  # is it correct?
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == 2*right.size, f"DIVS_DP size mismatch: {left.size} != 2*{right.size}"
 
@@ -272,9 +303,9 @@ class SymbolicVisitor(BNILVisitor):
         div = left / right
         return div.Extract(expr.size * 8 - 1, 0)
 
-    def visit_LLIL_MODU_DP(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_MODU_DP(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == 2*right.size, f"MODU_DP size mismatch: {left.size} != 2*{right.size}"
 
@@ -301,9 +332,9 @@ class SymbolicVisitor(BNILVisitor):
         mod = left.URem(right)
         return mod.Extract(expr.size * 8 - 1, 0)
 
-    def visit_LLIL_MODS_DP(self, expr):  # is it correct?
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_MODS_DP(self, expr,level):  # is it correct?
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert left.size == 2*right.size, f"MODS_DP size mismatch: {left.size} != 2*{right.size}"
 
@@ -330,9 +361,9 @@ class SymbolicVisitor(BNILVisitor):
         mod = left.SRem(right)
         return mod.Extract(expr.size * 8 - 1, 0)
 
-    def visit_LLIL_AND(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_AND(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if isinstance(left, Bool):
             left = ITE(left, BVV(1, 8), BVV(0, 8))
@@ -346,9 +377,9 @@ class SymbolicVisitor(BNILVisitor):
 
         return left & right
 
-    def visit_LLIL_OR(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_OR(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if isinstance(left, Bool):
             left = ITE(left, BVV(1, 8), BVV(0, 8))
@@ -362,9 +393,9 @@ class SymbolicVisitor(BNILVisitor):
 
         return left | right
 
-    def visit_LLIL_XOR(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_XOR(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         if right.size > left.size:
             left = left.ZeroExt(right.size - left.size)
@@ -373,46 +404,45 @@ class SymbolicVisitor(BNILVisitor):
 
         return left ^ right
 
-    def visit_LLIL_NOT(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_NOT(self, expr,level):
+        src = self.visit(expr.src,level+1)
 
         return src.__invert__()
 
-    def visit_LLIL_NEG(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_NEG(self, expr,level):
+        src = self.visit(expr.src,level+1)
 
         return src.__neg__()
 
-    def visit_LLIL_LOAD(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_LOAD(self, expr,level):
+        src = self.visit(expr.src,level+1)
         size = expr.size
-
         loaded = self.executor.state.mem.load(
             src, size, endness=self.executor.arch.endness())
 
         return loaded
 
-    def visit_LLIL_STORE(self, expr):
-        dest = self.visit(expr.dest)
-        src = self.visit(expr.src)
+    def visit_LLIL_STORE(self, expr,level):
+        dest = self.visit(expr.dest,level+1)
+        src = self.visit(expr.src,level+1)
         assert expr.size*8 == src.size, f"STORE size mismatch: {expr.size*8} != {src.size}"
 
         self.executor.state.mem.store(
             dest, src, endness=self.executor.arch.endness())
         return True
 
-    def visit_LLIL_LSL(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_LSL(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"LSL size check: {right.size} > {left.size}"
 
         # the logical and arithmetic left-shifts are exactly the same
         return left << right.ZeroExt(left.size - right.size)
 
-    def visit_LLIL_LSR(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_LSR(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"LSR size check: {right.size} > {left.size}"
 
@@ -420,9 +450,9 @@ class SymbolicVisitor(BNILVisitor):
             right.ZeroExt(left.size - right.size)
         )
 
-    def visit_LLIL_ROR(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ROR(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"ROR size check: {right.size} > {left.size}"
 
@@ -430,9 +460,9 @@ class SymbolicVisitor(BNILVisitor):
             right.ZeroExt(left.size - right.size)
         )
 
-    def visit_LLIL_ROL(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ROL(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"ROL size check: {right.size} > {left.size}"
 
@@ -440,25 +470,27 @@ class SymbolicVisitor(BNILVisitor):
             right.ZeroExt(left.size - right.size)
         )
 
-    def visit_LLIL_ASL(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ASL(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"ASL size check: {right.size} > {left.size}"
 
         return left << right.ZeroExt(left.size - right.size)
 
-    def visit_LLIL_ASR(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_ASR(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         assert right.size <= left.size, f"ASR size check: {right.size} > {left.size}"
 
         return left >> right.ZeroExt(left.size - right.size)
 
-    def visit_LLIL_CALL(self, expr):
-        dest = self.visit(expr.dest)
-        dest_fun_name = None
+    def visit_LLIL_INTRINSIC(self, expr, level):
+        logger.log_info(f"LLIL_INTRINSIC:{expr.intrinsic.name} at {hex(expr.address)}")
+
+    def visit_LLIL_CALL(self, expr,level):
+        dest = self.visit(expr.dest,level+1)
 
         sym = get_from_code_refs(self.executor.view, self.executor.ip)
         if sym is None:
@@ -501,9 +533,10 @@ class SymbolicVisitor(BNILVisitor):
 
         # check if we have an handler
         if dest_fun_name in library_functions:
+            logger.log_info(f"Running {dest_fun_name} builtin handler")
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-            print(f"Running {dest_fun_name} builtin handler: {res}")
+            logger.log_info(f"{dest_fun_name} builtin handler returned {res}")
             try:
                 dest_fun = self.executor.bncache.get_function(dest.value)
                 calling_convention = dest_fun.calling_convention
@@ -547,8 +580,8 @@ class SymbolicVisitor(BNILVisitor):
         self.executor._wasjmp = True
         return True
 
-    def visit_LLIL_TAILCALL(self, expr):
-        dest = self.visit(expr.dest)
+    def visit_LLIL_TAILCALL(self, expr,level):
+        dest = self.visit(expr.dest,level+1)
         dest_fun_name = None
 
         sym = get_from_code_refs(self.executor.view, self.executor.ip)
@@ -584,9 +617,10 @@ class SymbolicVisitor(BNILVisitor):
 
         # check if we have an handler
         if dest_fun_name in library_functions:
+            logger.log_info(f"Running {dest_fun_name} builtin handler")
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-            print(f"Running {dest_fun_name} builtin handler: {res}")
+            logger.log_info(f"{dest_fun_name} builtin handler returned: {res}")
             calling_convention = "cdecl"
             dest_fun = self.executor.bncache.get_function(dest.value)
             if dest_fun is not None:
@@ -630,8 +664,8 @@ class SymbolicVisitor(BNILVisitor):
         self.executor._wasjmp = True
         return True
 
-    def visit_LLIL_JUMP(self, expr):
-        destination = self.visit(expr.dest)
+    def visit_LLIL_JUMP(self, expr,level):
+        destination = self.visit(expr.dest,level+1)
 
         if not symbolic(destination):
             # fast path. The destination is concrete
@@ -644,8 +678,8 @@ class SymbolicVisitor(BNILVisitor):
 
         assert False, "JUMP: unimplemented case"
 
-    def visit_LLIL_JUMP_TO(self, expr):
-        destination = self.visit(expr.dest)
+    def visit_LLIL_JUMP_TO(self, expr,level):
+        destination = self.visit(expr.dest,level+1)
 
         curr_fun_name = self.executor.bncache.get_function_name(
             self.executor.ip)
@@ -718,8 +752,8 @@ class SymbolicVisitor(BNILVisitor):
         # self.executor._wasjmp = True
         # return True
 
-    def visit_LLIL_IF(self, expr):
-        condition = self.visit(expr.condition)
+    def visit_LLIL_IF(self, expr,level):
+        condition = self.visit(expr.condition,level+1)
         true_llil_index = expr.true
         false_llil_index = expr.false
 
@@ -818,8 +852,8 @@ class SymbolicVisitor(BNILVisitor):
         self.executor._wasjmp = True
         return True
 
-    def visit_LLIL_BOOL_TO_INT(self, expr):
-        bool_val = self.visit(expr.src)
+    def visit_LLIL_BOOL_TO_INT(self, expr,level):
+        bool_val = self.visit(expr.src,level+1)
         size = expr.size * 8
         
         # flags are 1-bit bitvectors, convert to bool for ITE
@@ -828,67 +862,67 @@ class SymbolicVisitor(BNILVisitor):
         
         return ITE(bool_val, BVV(1, size), BVV(0, size))
 
-    def visit_LLIL_CMP_E(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_E(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left == right
 
-    def visit_LLIL_CMP_NE(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_NE(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left != right
 
-    def visit_LLIL_CMP_SLT(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_SLT(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left < right
 
-    def visit_LLIL_CMP_ULT(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_ULT(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left.ULT(right)
 
-    def visit_LLIL_CMP_SLE(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_SLE(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left <= right
 
-    def visit_LLIL_CMP_ULE(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_ULE(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left.ULE(right)
 
-    def visit_LLIL_CMP_SGT(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_SGT(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left > right
 
-    def visit_LLIL_CMP_UGT(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_UGT(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left.UGT(right)
 
-    def visit_LLIL_CMP_SGE(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_SGE(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left >= right
 
-    def visit_LLIL_CMP_UGE(self, expr):
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
+    def visit_LLIL_CMP_UGE(self, expr,level):
+        left = self.visit(expr.left,level+1)
+        right = self.visit(expr.right,level+1)
 
         return left.UGE(right)
 
-    def visit_LLIL_GOTO(self, expr):
+    def visit_LLIL_GOTO(self, expr,level):
         dest = expr.dest
 
         curr_fun_name = self.executor.bncache.get_function_name(
@@ -898,8 +932,8 @@ class SymbolicVisitor(BNILVisitor):
         self.executor._wasjmp = True
         return True
 
-    def visit_LLIL_RET(self, expr):
-        dest = self.visit(expr.dest)
+    def visit_LLIL_RET(self, expr,level):
+        dest = self.visit(expr.dest,level+1)
 
         if symbolic(dest):
             num_ips, dest_ips = self._handle_symbolic_ip(dest, 256)
@@ -936,32 +970,32 @@ class SymbolicVisitor(BNILVisitor):
             self.executor._wasjmp = True
             return True
 
-    def visit_LLIL_PUSH(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_PUSH(self, expr,level):
+        src = self.visit(expr.src,level+1)
 
         self.executor.state.stack_push(src)
         return True
 
-    def visit_LLIL_POP(self, expr):
+    def visit_LLIL_POP(self, expr,level):
         return self.executor.state.stack_pop()
 
-    def visit_LLIL_SX(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_SX(self, expr,level):
+        src = self.visit(expr.src,level+1)
         dest_size = expr.size * 8
 
         assert src.size <= dest_size, f"SX size check: {src.size} > {dest_size}"
 
         return src.SignExt(dest_size - src.size)
 
-    def visit_LLIL_ZX(self, expr):
-        src = self.visit(expr.src)
+    def visit_LLIL_ZX(self, expr,level):
+        src = self.visit(expr.src,level+1)
         dest_size = expr.size * 8
 
         assert src.size <= dest_size, f"ZX size check: {src.size} > {dest_size}"
 
         return src.ZeroExt(dest_size - src.size)
 
-    def visit_LLIL_SYSCALL(self, expr):
+    def visit_LLIL_SYSCALL(self, expr,level):
         n = self.executor.state.syscall_abi.get_number(self.executor.state)
         assert not symbolic(n), "SYSCALL: symbolic syscall number"
         n = n.value
@@ -975,15 +1009,15 @@ class SymbolicVisitor(BNILVisitor):
 
         return True
 
-    def visit_LLIL_NORET(self, expr):
+    def visit_LLIL_NORET(self, expr,level):
         raise ExitException()
 
-    def visit_LLIL_ASSERT(self, expr):
+    def visit_LLIL_ASSERT(self, expr,level):
         # add constraint from UIDF (user informed dataflow)
         # https://docs.binary.ninja/dev/uidf.html
         # https://api.binary.ninja/binaryninja.variable-module.html#binaryninja.variable.PossibleValueSet
 
-        reg_val = self.visit(expr.src)
+        reg_val = self.visit(expr.src,level+1)
         constraint_set = expr.constraint
         
         # convert PossibleValueSet to symbolic constraints
@@ -1025,3 +1059,6 @@ class SymbolicVisitor(BNILVisitor):
         
         # it can also be undetermined, so ignore that
         return True
+
+    def visit_LLIL_UNIMPL(self, expr,level):
+        logger.log_error(f"Unimplemented instruction:{expr} at {hex(expr.address)}")
