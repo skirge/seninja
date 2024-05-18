@@ -263,14 +263,13 @@ class SymbolicExecutor(object):
             block.set_auto_highlight(color)
 
     def _update_state_history(self, state, addr):
-        # print(f"Updating state history for addr={hex(addr)}")
+        if addr == 0:
+            return
         if self.bncache.get_setting("save_state_history") == 'true':
             state.insn_history.add(addr)
         func = self.bncache.get_function(addr)
         if func is not None:
             self.color_block(func, addr, HIGHLIGHTED_HISTORY_COLOR)
-        else: 
-            print(f"Function for address {addr} not found!")
         self.ui.update_history_highlight(addr)
 
     def _execute_one(self):
