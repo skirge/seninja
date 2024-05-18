@@ -60,18 +60,18 @@ class Memory(MemoryAbstract):
     CHECK_SYMB_ADDR_WITH_SOLVER = False
 
     def __init__(self, state, page_size=0x1000, bits=64, symb_uninitialized=False):
-        # page_size must be a power of 2
-        assert (page_size & (page_size - 1)) == 0
+        assert (page_size & (page_size - 1)) == 0, "page_size must be a power of 2"
         self.bits = bits
         self.state = state
         self.pages = dict()
         self.page_size = page_size
         self.index_bits = math.ceil(math.log(page_size, 2))
-        self.pages[0xDEADC0DE] = Page(0xDEADC0DE, 2*self.page_size, self.index_bits)
-        self.pages[0x0] = Page(0x0, 2*self.page_size, self.index_bits)
+
         self.symb_init = symb_uninitialized
         self.load_hooks = []
         self.store_hooks = []
+        self.pages[0x0] = Page(0x0, 2*self.page_size, self.index_bits)
+        self.mmap(0xDEAD0000, 0x10000)
 
     def __str__(self):
         return "<SymMemory, %d pages>" % len(self.pages)
@@ -86,8 +86,8 @@ class Memory(MemoryAbstract):
         return self.pages[page_addr].mo.bvarray.get_assertions()
 
     def mmap(self, address: int, size: int, init: InitData = None):
-        assert address % self.page_size == 0
-        assert size % self.page_size == 0
+        assert address % self.page_size == 0, "address not multiple of page size"
+        assert size % self.page_size == 0, "size not multiple of page size"
 
         init_val = None
         init_index = None
@@ -259,14 +259,20 @@ class Memory(MemoryAbstract):
         )
 
     def _store(self, page_address: int, page_index: BV, value: BV, condition: Bool = None):
-        if not page_address in self.pages:
-            print(f"{hex(page_address)} address is not mapped")
-            assert page_address in self.pages
+        assert page_address in self.pages, f"{hex(page_address)} address is not mapped"
         assert value.size == 8
 
         value = value.simplify()
         self.pages[page_address] = self.pages[page_address].store(
             page_index, value, condition)
+
+    def store_list(self, address, data, endness='big'):
+        assert data, "Data should not be empty!"
+        offset = 0
+        for el in data:
+            self.store(address + offset, el, endness)
+            offset += el.size // 8
+        return offset
 
     def store(self, address, value: BV, endness='big'):
         if isinstance(address, int):
@@ -299,7 +305,7 @@ class Memory(MemoryAbstract):
                             self.state.executor.put_in_errored(
                                 self.state, "write unmapped"
                             )
-                            print("Unmapped write address:%s" % page_address)
+                            print(f"Unmapped write address={address}, page_address={page_address}, endness={endness}")
                             raise exceptions.UnmappedWrite(self.state.get_ip())
                 self._store(page_address, page_index,
                             value.Extract(8*(i+1)-1, 8*i))
@@ -321,7 +327,7 @@ class Memory(MemoryAbstract):
                     self.state.executor.put_in_errored(
                         self.state, "write unmapped"
                     )
-                    print("Unmapped write address:%s" % page_address)
+                    print(f"Unmapped write address={address}, page_address={page_address}, endness={endness}")
                     raise exceptions.UnmappedWrite(self.state.get_ip())
             if conditions:
                 check_unmapped = self.state.executor.bncache.get_setting(
@@ -337,7 +343,7 @@ class Memory(MemoryAbstract):
                 self.state.solver.add_constraints(Or(*conditions))
 
     def _load(self, page_address: int, page_index: BV):
-        assert page_address in self.pages
+        assert page_address in self.pages, f"{hex(page_address)} not in mapped pages"
         return self.pages[page_address].load(page_index)
 
     def load(self, address, size: int, endness='big'):
@@ -354,14 +360,17 @@ class Memory(MemoryAbstract):
         res = None
         conditions = list()
         ran = range(size - 1, -1, -1) if endness == 'little' else range(size)
+        #print(f"read:address={address}, endness={endness}")
         for i in ran:
             page_address, page_index = split_bv(address + i, self.index_bits)
+            #print(f"read:page_address={page_address}, page_index={page_index}")
             # syntactic check + check with path constraint
             if not symbolic(page_address) or not self.state.solver.symbolic(page_address):
                 if symbolic(page_address):
                     page_address = self.state.solver.evaluate(page_address)
                 page_address = page_address.value
                 if page_address not in self.pages:
+                    # TODO: this is wrong
                     sym = bninja_util.get_from_code_refs(self.state.executor.view, self.state.get_ip())
                     if not sym:
                         sym = bninja_util.get_from_type_refs(self.state.executor.view, self.state.get_ip())
@@ -369,9 +378,12 @@ class Memory(MemoryAbstract):
                             self.state.executor.put_in_errored(
                                 self.state, "read unmapped"
                             )
+                            print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
                             raise exceptions.UnmappedRead(self.state.get_ip())
+                        print(f"got by workaround")
                         page_address = sym.address
                 tmp = self._load(page_address, page_index)
+                # print(f"tmp={tmp}")
             else:  # symbolic access
                 conditions = list()
                 tmp = None
@@ -396,8 +408,10 @@ class Memory(MemoryAbstract):
                             self.state.executor.put_in_errored(
                                 self.state, "read unmapped"
                             )
+                            print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
                             raise exceptions.UnmappedRead(self.state.get_ip())
                         tmp = sym.address
+                    print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
                     raise exceptions.UnmappedRead(self.state.get_ip())
             res = tmp if res is None else res.Concat(tmp)
 
@@ -493,8 +507,11 @@ class Memory(MemoryAbstract):
                 merge_condition
             )
 
+    def register_load_hook(self, function):
+        self.register_read_hook(function)
+
     def register_read_hook(self, function):
-        self.read_hooks.append(function)
+        self.load_hooks.append(function)
 
     def register_store_hook(self, function):
         self.store_hooks.append(function)
