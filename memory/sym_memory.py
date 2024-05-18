@@ -69,6 +69,8 @@ class Memory(MemoryAbstract):
         self.symb_init = symb_uninitialized
         self.load_hooks = []
         self.store_hooks = []
+        self.pages[0x0] = Page(0x0, 2*self.page_size, self.index_bits)
+        self.mmap(0xDEAD0000, 0x10000)
 
     def __str__(self):
         return "<SymMemory, %d pages>" % len(self.pages)
@@ -263,6 +265,14 @@ class Memory(MemoryAbstract):
         self.pages[page_address] = self.pages[page_address].store(
             page_index, value, condition)
 
+    def store_list(self, address, data, endness='big'):
+        assert data, "Data should not be empty!"
+        offset = 0
+        for el in data:
+            self.store(address + offset, el, endness)
+            offset += el.size // 8
+        return offset
+
     def store(self, address, value: BV, endness='big'):
         if isinstance(address, int):
             address = BVV(address, self.state.arch.bits())
@@ -347,8 +357,10 @@ class Memory(MemoryAbstract):
         res = None
         conditions = list()
         ran = range(size - 1, -1, -1) if endness == 'little' else range(size)
+        #print(f"read:address={address}, endness={endness}")
         for i in ran:
             page_address, page_index = split_bv(address + i, self.index_bits)
+            #print(f"read:page_address={page_address}, page_index={page_index}")
             # syntactic check + check with path constraint
             if not symbolic(page_address) or not self.state.solver.symbolic(page_address):
                 if symbolic(page_address):
@@ -360,6 +372,7 @@ class Memory(MemoryAbstract):
                     )
                     raise exceptions.UnmappedRead(self.state.get_ip())
                 tmp = self._load(page_address, page_index)
+                # print(f"tmp={tmp}")
             else:  # symbolic access
                 conditions = list()
                 tmp = None
@@ -475,8 +488,11 @@ class Memory(MemoryAbstract):
                 merge_condition
             )
 
+    def register_load_hook(self, function):
+        self.register_read_hook(function)
+
     def register_read_hook(self, function):
-        self.read_hooks.append(function)
+        self.load_hooks.append(function)
 
     def register_store_hook(self, function):
         self.store_hooks.append(function)
