@@ -30,7 +30,7 @@ class BNILVisitor(object):
             return getattr(self.executor.state.regs, expression.name)
 
         method_name = 'visit_{}'.format(expression.operation.name)
-        logger.log_debug(f"{' '*level}>{method_name}: expression={expression}")
+        logger.log_debug(f"{' '*level}>{method_name}: expression={expression} @ {hex(expression.address)}")
         if hasattr(self, method_name):
             value = getattr(self, method_name)(expression,level+1)
         else:
