@@ -155,6 +155,8 @@ class UIManager(object):
         func.set_comment_at(address, None)
 
     def color_block(self, func, ip, color):
+        if func is None:
+            return
         func.set_auto_instr_highlight(ip, color)
         blocks = self.executor.view.get_basic_blocks_at(ip)
         for block in blocks:
