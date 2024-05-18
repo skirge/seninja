@@ -13,7 +13,8 @@ class State(object):
         self.page_size = page_size
         self.arch = arch
         self.mem = Memory(self, page_size, arch.bits(),
-                          not executor.init_with_zero)
+                          not executor.init_with_zero,
+                          True if "Arm" in str(arch) else False)
         self.regs = Regs(self)
         self.solver = Solver(self)
         self.os = os
