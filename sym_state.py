@@ -15,7 +15,8 @@ class State(object):
         self.syscall_abi = target.syscall_abi
         self.layout = target.layout
         self.mem = Memory(self, page_size, self.arch.bits(),
-                          not executor.init_with_zero)
+                          not executor.init_with_zero,
+                          True if "Arm" in str(self.arch) else False)
         self.regs = Regs(self)
         self.solver = Solver(self)
         self.events = list()
