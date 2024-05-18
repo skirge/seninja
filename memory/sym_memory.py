@@ -60,7 +60,7 @@ class Page(object):
 class Memory(MemoryAbstract):
     CHECK_SYMB_ADDR_WITH_SOLVER = False
 
-    def __init__(self, state, page_size=0x1000, bits=64, symb_uninitialized=False):
+    def __init__(self, state, page_size=0x1000, bits=64, symb_uninitialized=False, is_arm=False):
         # page_size must be a power of 2
         assert (page_size & (page_size - 1)) == 0, f"page_size must be power of 2, got 0x{page_size:x}"
         self.bits = bits
@@ -73,6 +73,21 @@ class Memory(MemoryAbstract):
         self.symb_init = symb_uninitialized
         self.load_hooks = []
         self.store_hooks = []
+
+        self.pages[0x0] = Page(0x0, 2*self.page_size, self.index_bits)
+        self.mmap(0xDEAD0000, 0x10000)
+
+        if is_arm:
+            # ARM Memory Map
+            self.mmap(0x40000000, (0x400FFFFF - 0x40000000)+1)
+            self.mmap(0x42000000, (0x43FFFFFF - 0x42000000)+1)
+            self.mmap(0x30000000, 0x00800000)
+            self.mmap(0x20250000, 0x00080000)
+            self.mmap(0x80000000, 0x02000000)
+            self.mmap(0x20380000, 0x00080000)
+            self.mmap(0x20000000, 0x00040000)
+            self.mmap(0x202c0000, 0x00008000)
+            self.mmap(0x202c8000, 0x00008000)
 
     def __str__(self):
         return "<SymMemory, %d pages>" % len(self.pages)
