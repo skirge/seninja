@@ -84,6 +84,8 @@ def find_os(view):
         return Linuxi386()
     elif platform_name == 'linux-armv7':
         return LinuxArmV7()
+    elif platform_name == 'linux-thumb2':
+        return LinuxArmV7()
     elif platform_name == 'windows-x86':
         return Windows()
     elif platform_name == 'windows-x86_64':
