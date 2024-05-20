@@ -1,3 +1,4 @@
+import debugpy
 from binaryninja import (
     BinaryReader, BinaryWriter,
     RegisterValueType, enums,
@@ -22,9 +23,7 @@ from .utility.bninja_util import (
     find_os,
     parse_disasm_str,
     get_from_code_refs,
-    get_from_type_refs,
-    MockValue,
-    MockSymbol
+    get_from_type_refs
 )
 from .utility.binary_ninja_cache import BNCache
 from .memory.sym_memory import InitData
@@ -512,19 +511,20 @@ class SymbolicVisitor(BNILVisitor):
         dest = self.visit(expr.dest,level+1)
         dest_fun_name = None
 
-        sym = get_from_code_refs(self.executor.view, self.executor.ip)
+        sym = get_from_code_refs(self.executor.view, self.executor.ip, True)
         if sym is None:
-            sym = get_from_type_refs(self.executor.view, self.executor.ip)
+            sym = get_from_type_refs(self.executor.view, self.executor.ip, True)
             if sym is not None:
-                dest = MockValue(sym.address)
+                dest = BVV(sym.address, self.executor.arch.bits())
                 dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         else:
-            dest = MockValue(sym.address)
+            dest = BVV(sym.address, self.executor.arch.bits())
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
 
         if dest_fun_name is None and symbolic(dest):
             raise UnconstrainedIp(self.executor.ip)
-        
+        if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
+            dest.value = dest.value - 1
         curr_fun_name = self.executor.bncache.get_function_name(
             self.executor.ip)
         if dest_fun_name is None:
@@ -602,19 +602,20 @@ class SymbolicVisitor(BNILVisitor):
         dest = self.visit(expr.dest,level+1)
         dest_fun_name = None
 
-        sym = get_from_code_refs(self.executor.view, self.executor.ip)
+        sym = get_from_code_refs(self.executor.view, self.executor.ip, True)
         if sym is None:
-            sym = get_from_type_refs(self.executor.view, self.executor.ip)
+            sym = get_from_type_refs(self.executor.view, self.executor.ip, True)
             if sym is not None:
-                dest = MockValue(sym.address)
+                dest = BVV(sym.address, self.executor.arch.bits())
                 dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         else:
-            dest = MockValue(sym.address)
+            dest = BVV(sym.address, self.executor.arch.bits())
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
 
         if dest_fun_name is None and symbolic(dest):
             raise UnconstrainedIp(self.executor.ip)
-
+        if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
+            dest.value = dest.value - 1
         if dest_fun_name is None: 
             if dest.value in self.executor.imported_functions:
                 dest_fun_name = self.executor.imported_functions[dest.value]

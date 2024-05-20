@@ -93,30 +93,27 @@ def find_os(view):
 
     raise UnsupportedOs(platform_name)
 
-class MockValue(object):
-
-    def __init__(self, v):
-        self.value = v
-
 class MockSymbol(object):
 
     def __init__(self, v):
         self.address = v
 
-def get_from_code_refs(view, ip):
+def get_from_code_refs(view, ip, is_function=False):
     addrs = view.get_code_refs_from(ip)
     # TODO: improve this
     addr = 0
     # TODO: may ask user to select one if more functions were found
     for a in addrs:
-        if a != 0x0:
-            addr = a
-            break
-    if addr != 0:
-        sym = view.get_symbol_at(addr)
-        return sym
+        if is_function:
+            f = view.get_functions_at(addr)
+            if f:
+                return f[0].symbol
+        else:
+            sym = view.get_symbol_at(addr)
+            if sym:
+                return sym
 
-def get_from_type_refs(view, ip):
+def get_from_type_refs(view, ip, is_function=False):
     refs = view.get_code_refs_for_type_fields_from(ip)
     if refs:
         # TODO: What if more than one?
@@ -130,6 +127,8 @@ def get_from_type_refs(view, ip):
                 m = mm
         if m is None:
             raise Exception(f"Member not found in type:{t}")
+        if is_function and view.get_functions_by_name(m.name):
+            return view.get_functions_by_name(m.name)[0].symbol
         if m.name in view.symbols:
             return view.symbols[m.name][0]
         else:
