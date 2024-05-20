@@ -98,16 +98,19 @@ class SymbolicVisitor(BNILVisitor):
             src = src.ZeroExt(8)
 
         setattr(self.executor.state.regs, dest, src)
+        log.log_debug(f"{' '*level}>LLIL_SET_REG:{dest}={src}")
         return True
 
     def visit_LLIL_REG(self, expr,level):
         src = expr.src
-        return getattr(self.executor.state.regs, src.name)
+        v = getattr(self.executor.state.regs, src.name)
+        log.log_debug(f"{' '*level}>LLIL_REG:{src.name}={v}")
+        return v
 
     def visit_LLIL_REG_SPLIT(self, expr,level):
         lo = getattr(self.executor.state.regs, expr.lo.name)
         hi = getattr(self.executor.state.regs, expr.hi.name)
-
+        log.log_debug(f"{' '*level}>LLIL_REG_SPLIT:lo={lo},hi={hi}")
         return hi.Concat(lo)
 
     def visit_LLIL_SET_REG_SPLIT(self, expr,level):
@@ -131,6 +134,7 @@ class SymbolicVisitor(BNILVisitor):
         else:
             res = ITE(src == 0, BVV(0, 1), BVV(1, 1))
         self.executor.state.regs.flags[dest] = res
+        log.log_debug(f"{' '*level}>LLIL_SET_FLAG:{dest}={res}")
         return True
 
     def visit_LLIL_FLAG(self, expr,level):
@@ -431,6 +435,7 @@ class SymbolicVisitor(BNILVisitor):
     def visit_LLIL_LOAD(self, expr,level):
         src = self.visit(expr.src,level+1)
         size = expr.size
+        log.log_debug(f"{' '*level}:LLIL_LOAD:src={src}, size={size}")
         loaded = self.executor.state.mem.load(
             src, size, endness=self.executor.arch.endness())
 
@@ -707,7 +712,6 @@ class SymbolicVisitor(BNILVisitor):
         else:
             max_num = 256
         num_ips, dest_ips = self._handle_symbolic_ip(destination, max_num)
-
         if num_ips == 256:
             self.executor.put_in_errored(
                 self.executor.state, "Probably unconstrained IP")
