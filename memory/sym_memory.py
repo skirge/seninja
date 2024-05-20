@@ -1,6 +1,5 @@
 import math
 from collections import namedtuple
-from os import write
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
 from ..utility import exceptions
 from ..utility import bninja_util
@@ -69,8 +68,8 @@ class Memory(MemoryAbstract):
         self.symb_init = symb_uninitialized
         self.load_hooks = []
         self.store_hooks = []
-        #self.mmap(0x0, 2*self.page_size)
-        self.mmap(0xDEAD0000, 0x10000)
+        #self.mmap(0x0, 0x1000)
+        self.mmap(0xDEADC000, 0x1000)
         if is_arm:
             # ARM Memory Map
             self.mmap(0x40000000, (0x400FFFFF - 0x40000000)+1)
@@ -373,30 +372,19 @@ class Memory(MemoryAbstract):
         res = None
         conditions = list()
         ran = range(size - 1, -1, -1) if endness == 'little' else range(size)
-        #print(f"read:address={address}, endness={endness}")
         for i in ran:
             page_address, page_index = split_bv(address + i, self.index_bits)
-            #print(f"read:page_address={page_address}, page_index={page_index}")
             # syntactic check + check with path constraint
             if not symbolic(page_address) or not self.state.solver.symbolic(page_address):
                 if symbolic(page_address):
                     page_address = self.state.solver.evaluate(page_address)
                 page_address = page_address.value
                 if page_address not in self.pages:
-                    # TODO: this is wrong
-                    sym = bninja_util.get_from_code_refs(self.state.executor.view, self.state.get_ip())
-                    if not sym:
-                        sym = bninja_util.get_from_type_refs(self.state.executor.view, self.state.get_ip())
-                        if not sym:
-                            self.state.executor.put_in_errored(
-                                self.state, "read unmapped"
-                            )
-                            print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
-                            raise exceptions.UnmappedRead(self.state.get_ip())
-                        print(f"got by workaround")
-                        page_address = sym.address
+                    self.state.executor.put_in_errored(
+                        self.state, "read unmapped"
+                    )
+                    raise exceptions.UnmappedRead(self.state.get_ip())
                 tmp = self._load(page_address, page_index)
-                # print(f"tmp={tmp}")
             else:  # symbolic access
                 conditions = list()
                 tmp = None
@@ -414,17 +402,9 @@ class Memory(MemoryAbstract):
                                   ) if tmp is not None else self._load(p, page_index)
 
                 if tmp is None:
-                    sym = bninja_util.get_from_code_refs(self.state.executor.view, self.state.get_ip())
-                    if not sym:
-                        sym = bninja_util.get_from_type_refs(self.state.executor.view, self.state.get_ip())
-                        if not sym:
-                            self.state.executor.put_in_errored(
-                                self.state, "read unmapped"
-                            )
-                            print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
-                            raise exceptions.UnmappedRead(self.state.get_ip())
-                        tmp = sym.address
-                    print(f"Unmapped read:address={address}, page_address={page_address}, endness={endness}")
+                    self.state.executor.put_in_errored(
+                        self.state, "read unmapped"
+                    )
                     raise exceptions.UnmappedRead(self.state.get_ip())
             res = tmp if res is None else res.Concat(tmp)
 
