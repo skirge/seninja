@@ -1,5 +1,4 @@
 import math
-
 from collections import namedtuple
 from os import write
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
@@ -70,9 +69,8 @@ class Memory(MemoryAbstract):
         self.symb_init = symb_uninitialized
         self.load_hooks = []
         self.store_hooks = []
-        self.pages[0x0] = Page(0x0, 2*self.page_size, self.index_bits)
+        #self.mmap(0x0, 2*self.page_size)
         self.mmap(0xDEAD0000, 0x10000)
-        # self.pages[0xDEADC0DE] = Page(0xDEADC0DE, 2*self.page_size, self.index_bits)
         if is_arm:
             # ARM Memory Map
             self.mmap(0x40000000, (0x400FFFFF - 0x40000000)+1)
@@ -102,6 +100,7 @@ class Memory(MemoryAbstract):
         assert address % self.page_size == 0, "address not multiple of page size"
         assert size % self.page_size == 0, "size not multiple of page size"
 
+
         init_val = None
         init_index = None
         if init is not None:
@@ -128,7 +127,7 @@ class Memory(MemoryAbstract):
             address // self.page_size + size // self.page_size,
             1
         ):
-            if a not in self.pages:
+            if True:
                 init_data = None
                 if init_index is not None:
                     init_data = InitData(
@@ -137,6 +136,7 @@ class Memory(MemoryAbstract):
                     init_index = 0  # only the first page has a starting index
                     data_index_i = data_index_f
                     data_index_f = data_index_i + self.page_size
+            if a not in self.pages:
                 self.pages[a] = Page(
                     a, self.page_size, self.index_bits, init_data)
             else:
