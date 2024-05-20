@@ -974,6 +974,8 @@ class SymbolicVisitor(BNILVisitor):
                 dest_fun_name, self.executor.bncache.get_llil_address(dest_fun_name, dest_ip))
             self.executor._wasjmp = True
             return True
+        else:
+            raise ExitException()
 
     def visit_LLIL_PUSH(self, expr,level):
         src = self.visit(expr.src,level+1)
