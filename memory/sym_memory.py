@@ -1,7 +1,6 @@
 import math
 
 from collections import namedtuple
-from os import write
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
 from ..utility import exceptions
 from ..utility import bninja_util
@@ -361,15 +360,10 @@ class Memory(MemoryAbstract):
                     page_address = self.state.solver.evaluate(page_address)
                 page_address = page_address.value
                 if page_address not in self.pages:
-                    sym = bninja_util.get_from_code_refs(self.state.executor.view, self.state.get_ip())
-                    if not sym:
-                        sym = bninja_util.get_from_type_refs(self.state.executor.view, self.state.get_ip())
-                        if not sym:
-                            self.state.executor.put_in_errored(
-                                self.state, "read unmapped"
-                            )
-                            raise exceptions.UnmappedRead(self.state.get_ip())
-                        page_address = sym.address
+                    self.state.executor.put_in_errored(
+                        self.state, "read unmapped"
+                    )
+                    raise exceptions.UnmappedRead(self.state.get_ip())
                 tmp = self._load(page_address, page_index)
             else:  # symbolic access
                 conditions = list()
@@ -388,15 +382,9 @@ class Memory(MemoryAbstract):
                                   ) if tmp is not None else self._load(p, page_index)
 
                 if tmp is None:
-                    sym = bninja_util.get_from_code_refs(self.state.executor.view, self.state.get_ip())
-                    if not sym:
-                        sym = bninja_util.get_from_type_refs(self.state.executor.view, self.state.get_ip())
-                        if not sym:
-                            self.state.executor.put_in_errored(
-                                self.state, "read unmapped"
-                            )
-                            raise exceptions.UnmappedRead(self.state.get_ip())
-                        tmp = sym.address
+                    self.state.executor.put_in_errored(
+                        self.state, "read unmapped"
+                    )
                     raise exceptions.UnmappedRead(self.state.get_ip())
             res = tmp if res is None else res.Concat(tmp)
 
