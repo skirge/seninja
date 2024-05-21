@@ -86,7 +86,8 @@ class SymbolicExecutor(object):
                 self.state.address_page_aligned(start),
                 self.state.address_page_aligned(end + self.state.mem.page_size - 1) -
                 self.state.address_page_aligned(start),
-                InitData(data, start - self.state.address_page_aligned(start))
+                InitData(data, start - self.state.address_page_aligned(start)),
+                segment.writable
             )
         print("loading finished!")
 

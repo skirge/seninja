@@ -614,8 +614,10 @@ class SymbolicVisitor(BNILVisitor):
 
         if dest_fun_name is None and symbolic(dest):
             raise UnconstrainedIp(self.executor.ip)
+        log.log_debug(f"dest = {dest}")
         if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
             dest.value = dest.value - 1
+        log.log_debug(f"dest = {dest}")
         if dest_fun_name is None: 
             if dest.value in self.executor.imported_functions:
                 dest_fun_name = self.executor.imported_functions[dest.value]
