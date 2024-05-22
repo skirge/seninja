@@ -51,6 +51,10 @@ class SymbolicVisitor(BNILVisitor):
     def _handle_symbolic_ip(self, expr, max_sol):
         state = self.executor.state
         sols = state.solver.evaluate_upto(expr, max_sol)
+        # ARM
+        for sol in sols:
+            if "thumb" in self.executor.view.arch.name and (sol.value & 1 != 0):
+                sol.value = sol.value - 1
         return len(sols), sols
 
     # --- HANDLERS ---
@@ -457,37 +461,41 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_CALL(self, expr):
         dest = self.visit(expr.dest)
-        dest_fun_name = None
+        sym_from_code_refs = get_from_code_refs(self.executor.view, self.executor.ip, True)
+        sym_from_type_refs = get_from_type_refs(self.executor.view, self.executor.ip, True)
 
-        sym = get_from_code_refs(self.executor.view, self.executor.ip)
-        if sym is None:
-            sym = get_from_type_refs(self.executor.view, self.executor.ip)
-            if sym is not None:
-                dest = MockValue(sym.address)
-                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
-        else:
-            dest = MockValue(sym.address)
-            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
-
-        if dest_fun_name is None and symbolic(dest):
+        if sym_from_type_refs is None and sym_from_code_refs is None and symbolic(dest):
+            logger.log_debug(f"symbolic dest {dest} at {expr}")
             raise UnconstrainedIp(self.executor.ip)
-        
+        if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
+            dest.value = dest.value - 1
         curr_fun_name = self.executor.bncache.get_function_name(
             self.executor.ip)
-        if dest_fun_name is None:
-            if dest.value in self.executor.imported_functions:
-                dest_fun_name = self.executor.imported_functions[dest.value]
-            else:
-                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+        if dest.value in self.executor.imported_functions:
+            dest_fun_name = self.executor.imported_functions[dest.value]
+        else:
+            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         if dest_fun_name is None:
             # Last chance, look in symbols
             sym = self.executor.view.get_symbol_at(dest.value)
             if sym is None:
-                raise Exception("Unable to find function name @ 0x%x" % dest.value)
-            # If we are here, it is for sure a library function
-            dest_fun_name = sym.name
-            if dest_fun_name not in library_functions:
-                raise UnimplementedModel(dest_fun_name, self.executor.ip)
+                if sym_from_code_refs is None:
+                    if sym_from_type_refs is None:
+                        raise Exception("Unable to find function name @ 0x%x" % dest.value)
+                    else:
+                        logger.log_debug(f"got from type refs:{sym_from_type_refs}")
+                        dest = BVV(sym_from_type_refs.address, self.executor.arch.bits())
+                        dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+                else:
+                    logger.log_debug(f"got from code refs:{sym_from_code_refs}")
+                    dest = BVV(sym_from_code_refs.address, self.executor.arch.bits())
+                    dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+            else:
+                # If we are here, it is for sure a library function
+                logger.log_debug(f"got from symbol:{sym}")
+                dest_fun_name = sym.name
+                if dest_fun_name not in library_functions:
+                    raise UnimplementedModel(dest_fun_name, self.executor.ip)
 
         ret_addr = self.executor.ip + \
             self.executor.bncache.get_instruction_len(self.executor.ip)
@@ -546,35 +554,39 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_TAILCALL(self, expr):
         dest = self.visit(expr.dest)
-        dest_fun_name = None
+        sym_from_code_refs = get_from_code_refs(self.executor.view, self.executor.ip, True)
+        sym_from_type_refs = get_from_type_refs(self.executor.view, self.executor.ip, True)
 
-        sym = get_from_code_refs(self.executor.view, self.executor.ip)
-        if sym is None:
-            sym = get_from_type_refs(self.executor.view, self.executor.ip)
-            if sym is not None:
-                dest = MockValue(sym.address)
-                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
-        else:
-            dest = MockValue(sym.address)
-            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
-
-        if dest_fun_name is None and symbolic(dest):
+        if sym_from_code_refs is None  and sym_from_type_refs is None and symbolic(dest):
+            logger.log_debug(f"symbolic dest {dest} at {expr}")
             raise UnconstrainedIp(self.executor.ip)
-
-        if dest_fun_name is None: 
-            if dest.value in self.executor.imported_functions:
-                dest_fun_name = self.executor.imported_functions[dest.value]
-            else:
-                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+        if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
+            dest.value = dest.value - 1
+        if dest.value in self.executor.imported_functions:
+            dest_fun_name = self.executor.imported_functions[dest.value]
+        else:
+            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
         if dest_fun_name is None:
             # Last chance, look in symbols
             sym = self.executor.view.get_symbol_at(dest.value)
             if sym is None:
-                raise Exception("Unable to find function name @ 0x%x" % dest.value)
-            # If we are here, it is for sure a library function
-            dest_fun_name = sym.name
-            if dest_fun_name not in library_functions:
-                raise UnimplementedModel(dest_fun_name, self.executor.ip)
+                if sym_from_code_refs is None:
+                    if sym_from_type_refs is None:
+                        raise Exception("Unable to find function name @ 0x%x" % dest.value)
+                    else:
+                        logger.log_debug(f"got from type refs:{sym_from_type_refs}")
+                        dest = BVV(sym_from_type_refs.address, self.executor.arch.bits())
+                        dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+                else:
+                    logger.log_debug(f"got from code refs:{sym_from_code_refs}")
+                    dest = BVV(sym_from_code_refs.address, self.executor.arch.bits())
+                    dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+            else:
+                # If we are here, it is for sure a library function
+                logger.log_debug(f"got from symbol:{sym}")
+                dest_fun_name = sym.name
+                if dest_fun_name not in library_functions:
+                    raise UnimplementedModel(dest_fun_name, self.executor.ip)
 
         # check if we have an handler
         if dest_fun_name in library_functions:
@@ -591,6 +603,7 @@ class SymbolicVisitor(BNILVisitor):
             # retrive return address
             dest = self.executor.arch.get_return_address(self.executor.state)
             if symbolic(dest):
+                logger.log_debug(f"symbolic return address {dest} at {expr}")
                 raise UnconstrainedIp(self.executor.ip)
 
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
@@ -613,6 +626,7 @@ class SymbolicVisitor(BNILVisitor):
             # retrive return address
             dest = self.executor.arch.get_return_address(self.executor.state)
             if symbolic(dest):
+                logger.log_debug(f"symbolic return address {dest} at {expr}")
                 raise UnconstrainedIp(self.executor.ip)
 
             dest_fun_name = self.executor.bncache.get_function_name(dest.value)
@@ -646,6 +660,9 @@ class SymbolicVisitor(BNILVisitor):
 
         if not symbolic(destination):
             # fast path. The destination is concrete
+            # ARM
+            if "thumb" in self.executor.view.arch.name and (destination.value & 1 != 0):
+                destination.value = destination.value - 1
             self.executor.update_ip(curr_fun_name, self.executor.bncache.get_llil_address(
                 curr_fun_name, destination.value))
             self.executor._wasjmp = True
@@ -661,7 +678,8 @@ class SymbolicVisitor(BNILVisitor):
         if num_ips == 256:
             self.executor.put_in_errored(
                 self.executor.state, "Probably unconstrained IP")
-            raise UnconstrainedIp()
+            logger.log_debug(f"Probably unconstrained IP  at JUMP_TO:{expr} - num_ips:{num_ips}")
+            raise UnconstrainedIp(self.executor.ip)
 
         if num_ips == 0:
             self.executor.put_in_errored(
@@ -901,6 +919,7 @@ class SymbolicVisitor(BNILVisitor):
             if num_ips == 256:
                 self.executor.put_in_errored(
                     self.executor.state, "Probably unconstrained IP")
+                logger.log_debug(f"Probably unconstrained IP at RET:{expr}, num_ips:{num_ips}")
                 raise UnconstrainedIp(self.executor.ip)
             if num_ips == 0:
                 self.executor.put_in_errored(
