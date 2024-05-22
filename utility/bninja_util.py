@@ -1,3 +1,4 @@
+import debugpy
 from binaryninja import SymbolType
 from .exceptions import UnsupportedOs
 from ..os_models.linux import Linuxi386, Linuxia64, LinuxArmV7
@@ -100,10 +101,8 @@ class MockSymbol(object):
 
 def get_from_code_refs(view, ip, is_function=False):
     addrs = view.get_code_refs_from(ip)
-    # TODO: improve this
-    addr = 0
     # TODO: may ask user to select one if more functions were found
-    for a in addrs:
+    for addr in addrs:
         if is_function:
             f = view.get_functions_at(addr)
             if f:
