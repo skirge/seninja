@@ -254,6 +254,10 @@ class SymbolicExecutor(object):
         return True
 
     def update_ip(self, funcion_name, new_llil_ip):
+        if new_llil_ip is None:
+            logger.log_debug(f"new_llil_ip is None")
+            raise exceptions.UnconstrainedIp(self.ip)
+
         self.llil_ip = new_llil_ip
         self.ip = self.bncache.get_address(funcion_name, new_llil_ip)
         self.state.set_ip(self.ip)

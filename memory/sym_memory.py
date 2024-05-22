@@ -23,6 +23,7 @@ class Page(object):
         self._init = init
         self._lazycopy = 0
 
+
     def lazy_init(self):
         if self._init is not None:
             start = BVV(self._init.index, self.bits)
@@ -34,7 +35,8 @@ class Page(object):
             self._init = None
 
     def store(self, index: BV, value: BV, condition: Bool = None):
-        assert self.writable, f"Writing to not writable page at index = {index}"
+        if not self.writable:
+            logger.log_debug(f"Writing to not writable page at index = {index}")
         self.dirty = True
 
         self.lazy_init()
@@ -127,6 +129,9 @@ class Memory(MemoryAbstract):
                     a, self.page_size, self.index_bits, init_data, writable)
             else:
                 logger.log_info("remapping the same page '%s'" % hex(a))
+                if self.pages[a].writable != writable:
+                    logger.log_info("changing writable flag for page '%s'" % hex(a))
+                    self.pages[a].writable = writable
             i += 1
 
     def is_mapped(self, address: int):
