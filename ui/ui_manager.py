@@ -169,7 +169,7 @@ class UIManager(object):
         old_ip = self.executor._last_colored_ip
         if old_ip is not None:
             old_func = self.executor.bncache.get_function(old_ip)
-            self.color_block(old_func, old_ip, UIManager.NO_COLOR)
+            self.color_block(old_func, old_ip, UIManager.HIGHLIGHTED_HISTORY_COLOR)
         for ip in self.executor.fringe._deferred:
             func = self.executor.bncache.get_function(ip)
             self.color_block(func, ip,UIManager.DEFERRED_STATE_COLOR if not reset else UIManager.NO_COLOR)
