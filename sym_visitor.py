@@ -492,7 +492,7 @@ class SymbolicVisitor(BNILVisitor):
         return left >> right.ZeroExt(left.size - right.size)
 
     def visit_LLIL_INTRINSIC(self, expr, level):
-        logger.log_info(f"LLIL_INTRINSIC:{expr.intrinsic.name} at {hex(expr.address)}")
+        logger.log_debug(f"LLIL_INTRINSIC:{expr.intrinsic.name} at {hex(expr.address)}")
 
     def visit_LLIL_CALL(self, expr,level):
         dest = self.visit(expr.dest,level+1)
@@ -538,10 +538,10 @@ class SymbolicVisitor(BNILVisitor):
 
         # check if we have an handler
         if dest_fun_name in library_functions:
-            logger.log_info(f"Running {dest_fun_name} builtin handler")
+            logger.log_debug(f"Running {dest_fun_name} builtin handler")
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-            logger.log_info(f"{dest_fun_name} builtin handler returned {res}")
+            logger.log_debug(f"{dest_fun_name} builtin handler returned {res}")
             try:
                 dest_fun = self.executor.bncache.get_function(dest.value)
                 calling_convention = dest_fun.calling_convention
@@ -622,10 +622,10 @@ class SymbolicVisitor(BNILVisitor):
 
         # check if we have an handler
         if dest_fun_name in library_functions:
-            logger.log_info(f"Running {dest_fun_name} builtin handler")
+            logger.log_debug(f"Running {dest_fun_name} builtin handler")
             res = library_functions[dest_fun_name](
                 self.executor.state, self.executor.view)
-            logger.log_info(f"{dest_fun_name} builtin handler returned: {res}")
+            logger.log_debug(f"{dest_fun_name} builtin handler returned: {res}")
             calling_convention = "cdecl"
             dest_fun = self.executor.bncache.get_function(dest.value)
             if dest_fun is not None:
