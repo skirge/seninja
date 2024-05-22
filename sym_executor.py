@@ -48,6 +48,7 @@ class SymbolicExecutor(object):
         self.vars = set()
         self.fringe = Fringe()
         self.ip = addr
+        self.ips = None
         self.llil_ip = None
         self.arch = None
         self.user_hooks = dict()
@@ -374,6 +375,17 @@ class SymbolicExecutor(object):
             # go on by 1 instruction
             self.update_ip(func_name, self.llil_ip + 1)
         else:
+            if self.ips:
+                if self.ip in self.ips:
+                    self.ips[self.ip] += 1
+                else:
+                    self.ips[self.ip] = 1
+            else:
+                self.ips = { self.ip : 0 }
+            # Arbitrary number, hardcoded for now
+            if self.ips[self.ip] > 5000:
+                log.log_error(f"Stuck in a loop @ {hex(self.ip)}")
+                self.ips[self.ip] = 0
             self._wasjmp = False
 
         return self.ip
