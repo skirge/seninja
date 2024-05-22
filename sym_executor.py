@@ -1,3 +1,4 @@
+from binaryninja import log
 import sys
 import traceback
 
@@ -90,6 +91,16 @@ class SymbolicExecutor(object):
                 segment.writable
             )
         print("loading finished!")
+        if "Arm" in str(self.arch):
+            # ARM Memory Map - added after view segments in case any needed segment is missing from binary
+            self.state.mem.mmap(0x40000000, (0x400FFFFF - 0x40000000)+1)
+            self.state.mem.mmap(0x42000000, (0x43FFFFFF - 0x42000000)+1)
+            self.state.mem.mmap(0x30000000, 0x00800000) # /*   8M bytes (alias Flash) */
+            self.state.mem.mmap(0x20250000, 0x00080000) #  /* 512K bytes (alias RAM3)  */
+            self.state.mem.mmap(0x80000000, 0x02000000) # /*  32M bytes (alias RAM6)  */
+            self.state.mem.mmap(0x20380000, 0x00080000) # /* 512K bytes (alias RAM7)  */
+            self.state.mem.mmap(0x20000000, 0x00040000) # /* 256K bytes (alias RAM)   */
+            self.state.mem.mmap(0x202c0000, 0x00008000) # /*  32K bytes (alias RAM4)  */
 
         current_function = self.bncache.get_function(addr)
 
@@ -250,6 +261,7 @@ class SymbolicExecutor(object):
 
     def update_ip(self, funcion_name, new_llil_ip):
         if new_llil_ip is None:
+            log.log_debug(f"new_llil_ip is None")
             raise exceptions.UnconstrainedIp(self.ip)
 
         self.llil_ip = new_llil_ip

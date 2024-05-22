@@ -1,3 +1,4 @@
+from binaryninja import log
 from .arch.arch_abstract import Arch
 from .arch.arch_x86_64 import x8664Arch
 from .os_models.os_abstract import Os
@@ -13,8 +14,7 @@ class State(object):
         self.page_size = page_size
         self.arch = arch
         self.mem = Memory(self, page_size, arch.bits(),
-                          not executor.init_with_zero,
-                          True if "Arm" in str(arch) else False)
+                          not executor.init_with_zero)
         self.regs = Regs(self)
         self.solver = Solver(self)
         self.os = os

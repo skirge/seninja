@@ -1,3 +1,4 @@
+from binaryninja import log
 import math
 from collections import namedtuple
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
@@ -22,6 +23,7 @@ class Page(object):
         self._init = init
         self._lazycopy = 0
 
+
     def lazy_init(self):
         if self._init is not None:
             start = BVV(self._init.index, self.bits)
@@ -33,7 +35,8 @@ class Page(object):
             self._init = None
 
     def store(self, index: BV, value: BV, condition: Bool = None):
-        assert self.writable, f"Writing to not writable page at index = {index}"
+        if not self.writable:
+            log.log_debug(f"Writing to not writable page at index = {index}")
         self.dirty = True
 
         self.lazy_init()
@@ -59,7 +62,7 @@ class Page(object):
 class Memory(MemoryAbstract):
     CHECK_SYMB_ADDR_WITH_SOLVER = False
 
-    def __init__(self, state, page_size=0x1000, bits=64, symb_uninitialized=False, is_arm=False):
+    def __init__(self, state, page_size=0x1000, bits=64, symb_uninitialized=False):
         assert (page_size & (page_size - 1)) == 0, "page_size must be a power of 2"
         self.bits = bits
         self.state = state
@@ -71,18 +74,8 @@ class Memory(MemoryAbstract):
         self.load_hooks = []
         self.store_hooks = []
         #self.mmap(0x0, 0x1000)
+        # this is for fake objects
         self.mmap(0xDEADC000, 0x1000)
-        if is_arm:
-            # ARM Memory Map
-            self.mmap(0x40000000, (0x400FFFFF - 0x40000000)+1)
-            self.mmap(0x42000000, (0x43FFFFFF - 0x42000000)+1)
-            self.mmap(0x30000000, 0x00800000) # /*   8M bytes (alias Flash) */
-            self.mmap(0x20250000, 0x00080000) #  /* 512K bytes (alias RAM3)  */
-            self.mmap(0x80000000, 0x02000000) # /*  32M bytes (alias RAM6)  */
-            self.mmap(0x20380000, 0x00080000) # /* 512K bytes (alias RAM7)  */
-            self.mmap(0x20000000, 0x00040000) # /* 256K bytes (alias RAM)   */
-            self.mmap(0x202c0000, 0x00008000) # /*  32K bytes (alias RAM4)  */
-            self.mmap(0x202c8000, 0x00008000) # /*  32K bytes (alias RAM5)  */
 
 
     def __str__(self):
@@ -142,6 +135,9 @@ class Memory(MemoryAbstract):
                     a, self.page_size, self.index_bits, init_data, writable)
             else:
                 print("remapping the same page '%s'" % hex(a))
+                if self.pages[a].writable != writable:
+                    print("changing writable flag for page '%s'" % hex(a))
+                    self.pages[a].writable = writable
             i += 1
 
     def is_mapped(self, address: int):
@@ -319,7 +315,7 @@ class Memory(MemoryAbstract):
                             self.state.executor.put_in_errored(
                                 self.state, "write unmapped"
                             )
-                            print(f"Unmapped write address={address}, page_address={page_address}, endness={endness}")
+                            log.log_debug(f"Unmapped write address={hex(address)}, page_address={hex(page_address)}, endness={endness}")
                             raise exceptions.UnmappedWrite(self.state.get_ip())
                 self._store(page_address, page_index,
                             value.Extract(8*(i+1)-1, 8*i))
@@ -341,7 +337,7 @@ class Memory(MemoryAbstract):
                     self.state.executor.put_in_errored(
                         self.state, "write unmapped"
                     )
-                    print(f"Unmapped write address={address}, page_address={page_address}, endness={endness}")
+                    log.log_debug(f"Unmapped write address={address}, page_address={page_address}, endness={endness}")
                     raise exceptions.UnmappedWrite(self.state.get_ip())
             if conditions:
                 check_unmapped = self.state.executor.bncache.get_setting(
