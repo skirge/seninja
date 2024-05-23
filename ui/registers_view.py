@@ -155,6 +155,10 @@ class RegisterWidget(QWidget):
             "Evaluate with solver") if not isinstance(expr, BVV) else None
         eval_upto_with_sol = menu.addAction(
             "Evaluate upto with solver") if not isinstance(expr, BVV) else None
+        eval_min = menu.addAction(
+            "Min value") if not isinstance(expr, BVV) else None
+        eval_max = menu.addAction(
+            "Max value") if not isinstance(expr, BVV) else None
         concretize = menu.addAction(
             "Concretize") if not isinstance(expr, BVV) else None
         copy = menu.addAction("Copy to clipboard") if not isinstance(
@@ -217,6 +221,20 @@ class RegisterWidget(QWidget):
                 show_message_box(
                     "Reg Value (with solver)",
                     hex(self.data.current_state.solver.evaluate(expr).value)
+                )
+        elif action == eval_min:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Min Value (with solver)",
+                    hex(self.data.current_state.solver.min(expr))
+                )
+        elif action == eval_max:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Max Value (with solver)",
+                    hex(self.data.current_state.solver.max(expr))
                 )
         elif action == eval_upto_with_sol:
             expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
