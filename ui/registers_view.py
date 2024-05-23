@@ -146,17 +146,21 @@ class RegisterWidget(QWidget):
             return
         row_idx = item.row()
 
-        if self.data.index_to_reg[row_idx] == self.data.arch.getip_reg():
-            return
+        is_pc = self.data.index_to_reg[row_idx] == self.data.arch.getip_reg()
 
         expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
 
         menu = QMenu()
+        make_reg_symb = None
+        set_reg_value = None
+        concretize = None
+        bind_to_buffer = None
+        make_pointer = None
+        fill_with_pattern = None
+        copy = menu.addAction("Copy to clipboard") if not isinstance(
+            expr, BVS) else None
         show_reg_expr = menu.addAction(
             "Show reg expression") if not isinstance(expr, BVV) else None
-        make_reg_symb = menu.addAction(
-            "Make reg symbolic") if isinstance(expr, BVV) else None
-        set_reg_value = menu.addAction("Set reg value")
         eval_with_sol = menu.addAction(
             "Evaluate with solver") if not isinstance(expr, BVV) else None
         eval_upto_with_sol = menu.addAction(
@@ -165,13 +169,15 @@ class RegisterWidget(QWidget):
             "Min value") if not isinstance(expr, BVV) else None
         eval_max = menu.addAction(
             "Max value") if not isinstance(expr, BVV) else None
-        concretize = menu.addAction(
-            "Concretize") if not isinstance(expr, BVV) else None
-        copy = menu.addAction("Copy to clipboard") if not isinstance(
-            expr, BVS) else None
-        bind_to_buffer = menu.addAction("Bind to symbolic buffer")
-        make_pointer = menu.addAction("Make pointer")
-        fill_with_pattern = menu.addAction("Bind to buffer filled with pattern")
+        if not is_pc:
+            make_reg_symb = menu.addAction(
+                "Make reg symbolic") if isinstance(expr, BVV) else None
+            set_reg_value = menu.addAction("Set reg value")
+            concretize = menu.addAction(
+                "Concretize") if not isinstance(expr, BVV) else None
+            bind_to_buffer = menu.addAction("Bind to symbolic buffer")
+            make_pointer = menu.addAction("Make pointer")
+            fill_with_pattern = menu.addAction("Bind to buffer filled with pattern")
         search_pattern = menu.addAction("Search pattern")
 
         action = menu.exec_(self.table.viewport().mapToGlobal(pos))
