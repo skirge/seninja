@@ -2,7 +2,7 @@ from ..sym_state import State
 from ..utility.expr_wrap_util import symbolic
 from ..expr import BVV, BVS, BoolV, ITE, Or, And
 from ..utility.models_util import get_arg_k
-from ..utility.exceptions import ExitException, ModelError
+from ..utility.exceptions import ExitException, ModelError, UnconstrainedIp
 from ..utility.string_util import as_bytes, str_to_bv_list
 from ..memory.sym_memory import InitData
 import re
@@ -458,6 +458,9 @@ def calloc_handler(state: State, view):
         InitData(bytes=b"\x00"*size, index=0)
     )
     return BVV(res, state.arch.bits())
+
+def stack_chk_fail_handler(state: State, view):
+    raise UnconstrainedIp(state.get_ip())
 
 # ***************************************
 

@@ -38,6 +38,10 @@ library_functions = {
     '__xstat':          models_unistd.xstat_handler,
     'exit':             models_libc.exit_handler,
 
+    # exploit dev: report stack overflow on canary check failure
+    '_stack_chk_fail':  models_libc.stack_chk_fail_handler,
+    '__stack_chk_fail': models_libc.stack_chk_fail_handler,
+
     # Antidebug
     'ptrace':           models_libc.ptrace_handler,
 
