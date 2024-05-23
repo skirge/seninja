@@ -25,7 +25,13 @@ from PySide6.QtWidgets import (
     QMenu
 )
 
+
 from ..utility.expr_wrap_util import symbolic
+from ..utility.string_util import (
+    pattern_gen,
+    pattern_search,
+    str_to_bv
+)
 from ..expr.bitvector import BVS, BVV
 
 def _makewidget(parent, val, center=False):
@@ -165,6 +171,8 @@ class RegisterWidget(QWidget):
             expr, BVS) else None
         bind_to_buffer = menu.addAction("Bind to symbolic buffer")
         make_pointer = menu.addAction("Make pointer")
+        fill_with_pattern = menu.addAction("Bind to buffer filled with pattern")
+        search_pattern = menu.addAction("Search pattern")
 
         action = menu.exec_(self.table.viewport().mapToGlobal(pos))
         if action is None:
@@ -193,6 +201,24 @@ class RegisterWidget(QWidget):
                     ptr)
             self.set_reg_value(
                 self.data.index_to_reg[row_idx], ptr)
+        elif action == fill_with_pattern:
+            size = get_int_input("Enter pattern size in bytes", "Pattern")
+            ptr = BVV(self.data.current_state.mem.allocate(size), self.data.current_state.arch.bits())
+            pattern = pattern_gen(size)
+            self.data.current_state.mem.store(ptr, str_to_bv(pattern))
+            setattr(self.data.current_state.regs,
+                    self.data.index_to_reg[row_idx],
+                    ptr)
+            self.set_reg_value(
+                self.data.index_to_reg[row_idx], ptr)
+        elif action == search_pattern:
+            pattern = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            val_str = "0x{obj:0{width}x}".format(
+                obj=pattern.value,
+                width=(pattern.size+3) // 4
+            )
+            index = pattern_search(val_str)
+            show_message_box("Pattern index", index)
         elif action == show_reg_expr:
             show_message_box("Reg Expression", str(expr.z3obj.sexpr()))
         elif action == make_reg_symb:
