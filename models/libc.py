@@ -468,8 +468,7 @@ def free_handler(state: State, view):
     return BVV(0, state.arch.bits())
 
 def stack_chk_fail_handler(state: State, view):
-    # TODO: add flag to search for this functions, report as stack overflow!
-    return BVV(0, state.arch.bits())
+    raise exceptions.UnconstrainedIp(state.get_ip())
 
 # ***************************************
 
