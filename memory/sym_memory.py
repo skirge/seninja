@@ -13,7 +13,7 @@ InitData = namedtuple('InitData', ['bytes', 'index'])
 
 
 class Page(object):
-    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None, writable = True):
+    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None, writable = True, real_size = 0):
         self.addr = addr
         self.size = size
         self.bits = bits
@@ -22,7 +22,7 @@ class Page(object):
         self.mo = MemoryObj("%Xh" % addr, bits)
         self._init = init
         self._lazycopy = 0
-
+        self.real_size = real_size if real_size > 0 else size
 
     def lazy_init(self):
         if self._init is not None:
@@ -90,9 +90,10 @@ class Memory(MemoryAbstract):
 
         return self.pages[page_addr].mo.bvarray.get_assertions()
 
-    def mmap(self, address: int, size: int, init: InitData = None, writable = True):
+    def mmap(self, address: int, size: int, init: InitData = None, writable = True, real_size=0):
         assert address % self.page_size == 0, "address not multiple of page size"
         assert size % self.page_size == 0, "size not multiple of page size"
+        assert size >= real_size, f"size {hex(size)} too small when real_size={hex(real_size)}"
 
 
         init_val = None
@@ -132,12 +133,14 @@ class Memory(MemoryAbstract):
                     data_index_f = data_index_i + self.page_size
             if a not in self.pages:
                 self.pages[a] = Page(
-                    a, self.page_size, self.index_bits, init_data, writable)
+                    a, self.page_size, self.index_bits, init_data, writable, self.page_size if real_size > self.page_size else real_size)
             else:
                 print("remapping the same page '%s'" % hex(a))
                 if self.pages[a].writable != writable:
                     print("changing writable flag for page '%s'" % hex(a))
                     self.pages[a].writable = writable
+            if real_size > 0:
+                real_size -= self.page_size
             i += 1
 
     def is_mapped(self, address: int):
@@ -272,6 +275,10 @@ class Memory(MemoryAbstract):
         assert page_address in self.pages, f"{hex(page_address)} address is not mapped"
         assert value.size == 8
 
+        if page_index.value > self.pages[page_address].real_size:
+            log.log_error(f"Writing past allocated buffer, index = {hex(page_index.value)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+            raise exceptions.UnmappedWrite(self.state.get_ip())
+
         value = value.simplify()
         self.pages[page_address] = self.pages[page_address].store(
             page_index, value, condition)
@@ -315,7 +322,7 @@ class Memory(MemoryAbstract):
                             self.state.executor.put_in_errored(
                                 self.state, "write unmapped"
                             )
-                            log.log_debug(f"Unmapped write address={hex(address)}, page_address={hex(page_address)}, endness={endness}")
+                            log.log_debug(f"Unmapped write address={hex(address.value)}, page_address={hex(page_address)}, endness={endness}")
                             raise exceptions.UnmappedWrite(self.state.get_ip())
                 self._store(page_address, page_index,
                             value.Extract(8*(i+1)-1, 8*i))
@@ -354,6 +361,9 @@ class Memory(MemoryAbstract):
 
     def _load(self, page_address: int, page_index: BV):
         assert page_address in self.pages, f"{hex(page_address)} not in mapped pages"
+        if page_index.value > self.pages[page_address].real_size:
+            log.log_error(f"Reading past allocated buffer, index = {hex(page_index.value)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+            raise exceptions.UnmappedRead(self.state.get_ip())
         return self.pages[page_address].load(page_index)
 
     def load(self, address, size: int, endness='big'):
@@ -466,7 +476,7 @@ class Memory(MemoryAbstract):
         num_pages = (size + self.page_size - 1) >> self.index_bits
         page_addr = self.get_unmapped(num_pages)
         full_addr = page_addr << self.index_bits
-        self.mmap(full_addr, num_pages * self.page_size, init)
+        self.mmap(full_addr, num_pages * self.page_size, init, real_size=size)
 
         return full_addr
 
