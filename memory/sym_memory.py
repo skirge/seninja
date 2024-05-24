@@ -274,11 +274,11 @@ class Memory(MemoryAbstract):
     def _store(self, page_address: int, page_index: BV, value: BV, condition: Bool = None):
         assert page_address in self.pages, f"{hex(page_address)} address is not mapped"
         assert value.size == 8
-
-        if page_index.value > self.pages[page_address].real_size:
-            log.log_error(f"Writing past allocated buffer, index = {hex(page_index.value)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
-            raise exceptions.UnmappedWrite(self.state.get_ip())
-
+        if isinstance(page_index, int) or isinstance(page_index, BVV):
+            pi = page_index if isinstance(page_index, int) else page_index.value
+            if pi > self.pages[page_address].real_size:
+                log.log_error(f"Writing past allocated buffer, index = {hex(pi)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+                raise exceptions.UnmappedWrite(self.state.get_ip())
         value = value.simplify()
         self.pages[page_address] = self.pages[page_address].store(
             page_index, value, condition)
@@ -361,9 +361,11 @@ class Memory(MemoryAbstract):
 
     def _load(self, page_address: int, page_index: BV):
         assert page_address in self.pages, f"{hex(page_address)} not in mapped pages"
-        if page_index.value > self.pages[page_address].real_size:
-            log.log_error(f"Reading past allocated buffer, index = {hex(page_index.value)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
-            raise exceptions.UnmappedRead(self.state.get_ip())
+        if isinstance(page_index, int) or isinstance(page_index, BVV):
+            pi = page_index if isinstance(page_index, int) else page_index.value
+            if pi > self.pages[page_address].real_size:
+                log.log_error(f"Reading past allocated buffer, index = {hex(pi)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+                raise exceptions.UnmappedRead(self.state.get_ip())
         return self.pages[page_address].load(page_index)
 
     def load(self, address, size: int, endness='big'):
