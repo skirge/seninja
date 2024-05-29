@@ -7,13 +7,14 @@ class Fringe(object):
         self.errored = list()
         self.avoided = list()
         self.exited = list()
+        self.exploitable = list()
         self._deferred = dict()
         self.last_added = None
 
     def __str__(self):
-        return "<Fringe id: 0x%x, unsat: %d, errored: %d, avoided: %d, deferred: %d, exited: %d>" % (
+        return "<Fringe id: 0x%x, unsat: %d, errored: %d, avoided: %d, deferred: %d, exited: %d, exploitable: %d>" % (
             id(self), len(self.unsat), len(self.errored), len(
-                self.avoided), len(self.deferred), len(self.exited)
+                self.avoided), len(self.deferred), len(self.exited), len(self.exploitable)
         )
 
     def __repr__(self):
@@ -33,6 +34,10 @@ class Fringe(object):
     @property
     def get_error_states(self):
         return self.errored
+
+    @property
+    def get_exploitable_states(self):
+        return self.exploitable
 
     @property
     def get_avoided_states(self):
@@ -108,6 +113,9 @@ class Fringe(object):
 
     def add_errored(self, state):
         self.errored.append(state)
+
+    def add_exploitable(self, state):
+        self.exploitable.append(state)
 
     def add_unsat(self, state):
         self.unsat.append(state)

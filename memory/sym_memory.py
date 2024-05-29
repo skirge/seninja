@@ -2,6 +2,7 @@ from binaryninja import log
 import math
 from collections import namedtuple
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
+from ..utility.string_util import str_to_bv
 from ..utility import exceptions
 from ..utility import bninja_util
 from ..expr import BV, BVV, Bool, Or, ITE
@@ -291,9 +292,20 @@ class Memory(MemoryAbstract):
             offset += el.size // 8
         return offset
 
+    def get_target_value(self):
+        return str_to_bv('A'*(self.state.arch.bits()//8))
+
     def store(self, address, value: BV, endness='big'):
         if isinstance(address, int):
             address = BVV(address, self.state.arch.bits())
+        else:
+            if self.state.solver.satisfiable(extra_constraints=[
+                address == self.state.mem.get_target_value()
+            ]):
+                log.log_error(f"EXPLOITABLE: found controlled write address: {address} min: {hex(self.state.solver.min(address))} max: {hex(self.state.solver.max(address))} @ {hex(self.state.get_ip())}")
+                self.state.executor.put_in_exploitable(
+                    self.state, "memory corruption"
+                )
         assert address.size == self.bits
 
         for f in self.store_hooks:
@@ -371,6 +383,14 @@ class Memory(MemoryAbstract):
     def load(self, address, size: int, endness='big'):
         if isinstance(address, int):
             address = BVV(address, self.state.arch.bits())
+        else:
+            if self.state.solver.satisfiable(extra_constraints=[
+                address == self.get_target_value()
+            ]):
+                log.log_error(f"EXPLOITABLE: found controlled load address: {address} min: {hex(self.state.solver.min(address))} max: {hex(self.state.solver.max(address))} @ {hex(self.state.get_ip())}")
+                self.state.executor.put_in_exploitable(
+                    self.state, "memory disclosure"
+                )
         assert address.size == self.bits
 
         for f in self.load_hooks:

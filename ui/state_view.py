@@ -49,7 +49,8 @@ class StateView(QWidget):
         self.active_state_color = QBrush(getThemeColor(ThemeColor.GreenStandardHighlightColor))
         self.defered_state_color = QBrush(getThemeColor(ThemeColor.RedStandardHighlightColor))
         self.unsat_state_color = QBrush(getThemeColor(ThemeColor.OrangeStandardHighlightColor))
-        self.error_state_color = QBrush(getThemeColor(ThemeColor.RedStandardHighlightColor))
+        self.error_state_color = QBrush(getThemeColor(ThemeColor.CyanStandardHighlightColor))
+        self.exploitable_state_color = QBrush(getThemeColor(ThemeColor.RedStandardHighlightColor))
         self.avoided_state_color = QBrush(getThemeColor(ThemeColor.MagentaStandardHighlightColor))
         self.exited_state_color = QBrush(getThemeColor(ThemeColor.BlackStandardHighlightColor))
         self.item_color = QBrush(getThemeColor(ThemeColor.BlackStandardHighlightColor))
@@ -82,6 +83,7 @@ class StateView(QWidget):
         STATE_ERROR = 3
         STATE_AVOIDED = 4
         STATE_EXITED = 5
+        STATE_EXPLOITABLE = 6
         self.data.state_collection.clear()
         
         deferred_states = Globals.uimanager.executor.fringe.deferred
@@ -89,8 +91,9 @@ class StateView(QWidget):
         error_states = Globals.uimanager.executor.fringe.get_error_states
         avoided_states = Globals.uimanager.executor.fringe.get_avoided_states
         exited_states = Globals.uimanager.executor.fringe.get_exited_states
+        exploitable_states = Globals.uimanager.executor.fringe.get_exploitable_states 
 
-        rowCount = len(deferred_states)+len(unsat_states)+len(error_states)+len(avoided_states)+len(exited_states)
+        rowCount = len(deferred_states)+len(unsat_states)+len(error_states)+len(avoided_states)+len(exited_states)+len(exploitable_states)
         if state:
             rowCount += 1
         self.table.setRowCount(rowCount)
@@ -107,6 +110,8 @@ class StateView(QWidget):
             self.data.state_collection.append((a,STATE_AVOIDED))
         for idx, a in enumerate(exited_states):
             self.data.state_collection.append((a,STATE_EXITED))
+        for idx, a in enumerate(exploitable_states):
+            self.data.state_collection.append((a[1],STATE_EXPLOITABLE))
         
         self.data.state_collection = sorted(self.data.state_collection, key=lambda t: t[0].get_ip())
 
@@ -136,6 +141,10 @@ class StateView(QWidget):
                 state_colour = self.exited_state_color
                 state_text_colour = self.item_color_inverted
                 state_status = "Exited"
+            if s==STATE_EXPLOITABLE:
+                state_colour = self.exploitable_state_color
+                state_text_colour = self.item_color_inverted
+                state_status = "EXPLOITABLE!"
 
             self.table.setItem(idx, 0, _makewidget(self, state_status))
             self.table.setItem(idx, 1, _makewidget(self, f"State_{hex(a.get_ip())}"))

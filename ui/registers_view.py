@@ -139,6 +139,10 @@ class RegisterWidget(QWidget):
             val = getattr(state.regs, reg)
             self.set_reg_value(reg, val)
 
+    def get_target_value(self):
+        arch = self.data.current_state.arch
+        return str_to_bv('A'*(arch.bits()//8))
+
     # right click menu
     def on_customContextMenuRequested(self, pos):
         item = self.table.itemAt(pos)
@@ -157,6 +161,7 @@ class RegisterWidget(QWidget):
         bind_to_buffer = None
         make_pointer = None
         fill_with_pattern = None
+        is_exploitable = None
         copy = menu.addAction("Copy to clipboard") if not isinstance(
             expr, BVS) else None
         show_reg_expr = menu.addAction(
@@ -169,6 +174,9 @@ class RegisterWidget(QWidget):
             "Min value") if not isinstance(expr, BVV) else None
         eval_max = menu.addAction(
             "Max value") if not isinstance(expr, BVV) else None
+        if is_pc:
+            is_exploitable = menu.addAction(
+                "Is exploitable?") if not isinstance(expr, BVV) else None
         if not is_pc:
             make_reg_symb = menu.addAction(
                 "Make reg symbolic") if isinstance(expr, BVV) else None
@@ -260,6 +268,16 @@ class RegisterWidget(QWidget):
                 show_message_box(
                     "Min Value (with solver)",
                     hex(self.data.current_state.solver.min(expr))
+                )
+        elif action == is_exploitable:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Is exploitable?",
+                    "True" if
+                    self.data.current_state.solver.satisfiable(
+                        extra_constraints = [expr == self.get_target_value()]) 
+                    else "False"
                 )
         elif action == eval_max:
             expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
