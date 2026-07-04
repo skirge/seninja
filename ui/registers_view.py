@@ -25,7 +25,13 @@ from PySide6.QtWidgets import (
     QMenu
 )
 
+
 from ..utility.expr_wrap_util import symbolic
+from ..utility.string_util import (
+    pattern_gen,
+    pattern_search,
+    str_to_bv
+)
 from ..expr.bitvector import BVS, BVV
 
 def _makewidget(parent, val, center=False):
@@ -133,6 +139,10 @@ class RegisterWidget(QWidget):
             val = getattr(state.regs, reg)
             self.set_reg_value(reg, val)
 
+    def get_target_value(self):
+        arch = self.data.current_state.arch
+        return str_to_bv('A'*(arch.bits()//8))
+
     # right click menu
     def on_customContextMenuRequested(self, pos):
         item = self.table.itemAt(pos)
@@ -140,27 +150,43 @@ class RegisterWidget(QWidget):
             return
         row_idx = item.row()
 
-        if self.data.index_to_reg[row_idx] == self.data.arch.getip_reg():
-            return
+        is_pc = self.data.index_to_reg[row_idx] == self.data.arch.getip_reg()
 
         expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
 
         menu = QMenu()
+        make_reg_symb = None
+        set_reg_value = None
+        concretize = None
+        bind_to_buffer = None
+        make_pointer = None
+        fill_with_pattern = None
+        is_exploitable = None
+        copy = menu.addAction("Copy to clipboard") if not isinstance(
+            expr, BVS) else None
         show_reg_expr = menu.addAction(
             "Show reg expression") if not isinstance(expr, BVV) else None
-        make_reg_symb = menu.addAction(
-            "Make reg symbolic") if isinstance(expr, BVV) else None
-        set_reg_value = menu.addAction("Set reg value")
         eval_with_sol = menu.addAction(
             "Evaluate with solver") if not isinstance(expr, BVV) else None
         eval_upto_with_sol = menu.addAction(
             "Evaluate upto with solver") if not isinstance(expr, BVV) else None
-        concretize = menu.addAction(
-            "Concretize") if not isinstance(expr, BVV) else None
-        copy = menu.addAction("Copy to clipboard") if not isinstance(
-            expr, BVS) else None
-        bind_to_buffer = menu.addAction("Bind to symbolic buffer")
-        make_pointer = menu.addAction("Make pointer")
+        eval_min = menu.addAction(
+            "Min value") if not isinstance(expr, BVV) else None
+        eval_max = menu.addAction(
+            "Max value") if not isinstance(expr, BVV) else None
+        if is_pc:
+            is_exploitable = menu.addAction(
+                "Is exploitable?") if not isinstance(expr, BVV) else None
+        if not is_pc:
+            make_reg_symb = menu.addAction(
+                "Make reg symbolic") if isinstance(expr, BVV) else None
+            set_reg_value = menu.addAction("Set reg value")
+            concretize = menu.addAction(
+                "Concretize") if not isinstance(expr, BVV) else None
+            bind_to_buffer = menu.addAction("Bind to symbolic buffer")
+            make_pointer = menu.addAction("Make pointer")
+            fill_with_pattern = menu.addAction("Bind to buffer filled with pattern")
+        search_pattern = menu.addAction("Search pattern")
 
         action = menu.exec_(self.table.viewport().mapToGlobal(pos))
         if action is None:
@@ -189,6 +215,24 @@ class RegisterWidget(QWidget):
                     ptr)
             self.set_reg_value(
                 self.data.index_to_reg[row_idx], ptr)
+        elif action == fill_with_pattern:
+            size = get_int_input("Enter pattern size in bytes", "Pattern")
+            ptr = BVV(self.data.current_state.mem.allocate(size), self.data.current_state.arch.bits())
+            pattern = pattern_gen(size)
+            self.data.current_state.mem.store(ptr, str_to_bv(pattern))
+            setattr(self.data.current_state.regs,
+                    self.data.index_to_reg[row_idx],
+                    ptr)
+            self.set_reg_value(
+                self.data.index_to_reg[row_idx], ptr)
+        elif action == search_pattern:
+            pattern = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            val_str = "0x{obj:0{width}x}".format(
+                obj=pattern.value,
+                width=(pattern.size+3) // 4
+            )
+            index = pattern_search(val_str)
+            show_message_box("Pattern index", index)
         elif action == show_reg_expr:
             show_message_box("Reg Expression", str(expr.z3obj.sexpr()))
         elif action == make_reg_symb:
@@ -217,6 +261,30 @@ class RegisterWidget(QWidget):
                 show_message_box(
                     "Reg Value (with solver)",
                     hex(self.data.current_state.solver.evaluate(expr).value)
+                )
+        elif action == eval_min:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Min Value (with solver)",
+                    hex(self.data.current_state.solver.min(expr))
+                )
+        elif action == is_exploitable:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Is exploitable?",
+                    "True" if
+                    self.data.current_state.solver.satisfiable(
+                        extra_constraints = [expr == self.get_target_value()]) 
+                    else "False"
+                )
+        elif action == eval_max:
+            expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])
+            if self.data.current_state.solver.symbolic(expr):
+                show_message_box(
+                    "Max Value (with solver)",
+                    hex(self.data.current_state.solver.max(expr))
                 )
         elif action == eval_upto_with_sol:
             expr = getattr(self.data.current_state.regs, self.data.index_to_reg[row_idx])

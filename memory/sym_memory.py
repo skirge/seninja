@@ -1,6 +1,7 @@
 import math
 from collections import namedtuple
 from ..utility.expr_wrap_util import symbolic, split_bv, heuristic_find_base
+from ..utility.string_util import str_to_bv
 from ..utility import exceptions
 from ..utility import bninja_util
 from ..expr import BV, BVV, Bool, Or, ITE
@@ -13,7 +14,7 @@ InitData = namedtuple('InitData', ['bytes', 'index'])
 
 
 class Page(object):
-    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None, writable = True):
+    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None, writable = True, real_size = 0):
         self.addr = addr
         self.size = size
         self.bits = bits
@@ -22,6 +23,7 @@ class Page(object):
         self.mo = MemoryObj("%Xh" % addr, bits)
         self._init = init
         self._lazycopy = 0
+        self.real_size = real_size if real_size > 0 else size
 
 
     def lazy_init(self):
@@ -100,9 +102,11 @@ class Memory(MemoryAbstract):
 
         return self.pages[page_addr].mo.bvarray.get_assertions()
 
-    def mmap(self, address: int, size: int, init: InitData = None, writable = True):
+    def mmap(self, address: int, size: int, init: InitData = None, writable = True, real_size = 0):
         assert address % self.page_size == 0, f"mmap: address 0x{address:x} not aligned to page_size 0x{self.page_size:x}"
         assert size % self.page_size == 0, f"mmap: size 0x{size:x} not multiple of page_size 0x{self.page_size:x}"
+        assert size >= real_size, f"size {hex(size)} too small when real_size={hex(real_size)}"
+
 
 
         init_val = None
@@ -142,12 +146,14 @@ class Memory(MemoryAbstract):
                     data_index_f = data_index_i + self.page_size
             if a not in self.pages:
                 self.pages[a] = Page(
-                    a, self.page_size, self.index_bits, init_data, writable)
+                    a, self.page_size, self.index_bits, init_data, writable, self.page_size if real_size > self.page_size else real_size)
             else:
                 logger.log_info("remapping the same page '%s'" % hex(a))
                 if self.pages[a].writable != writable:
                     logger.log_info("changing writable flag for page '%s'" % hex(a))
                     self.pages[a].writable = writable
+            if real_size > 0:
+                real_size -= self.page_size
             i += 1
 
     def is_mapped(self, address: int):
@@ -281,7 +287,11 @@ class Memory(MemoryAbstract):
     def _store(self, page_address: int, page_index: BV, value: BV, condition: Bool = None):
         assert page_address in self.pages, f"_store: page 0x{page_address:x} not mapped"
         assert value.size == 8, f"_store: value size must be 8, got {value.size}"
-
+        if isinstance(page_index, int) or isinstance(page_index, BVV):
+            pi = page_index if isinstance(page_index, int) else page_index.value
+            if pi > self.pages[page_address].real_size:
+                logger.log_error(f"Writing past allocated buffer, index = {hex(pi)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+                raise exceptions.UnmappedWrite(self.state.get_ip())
         value = value.simplify()
         self.pages[page_address] = self.pages[page_address].store(
             page_index, value, condition)
@@ -294,9 +304,20 @@ class Memory(MemoryAbstract):
             offset += el.size // 8
         return offset
 
+    def get_target_value(self):
+        return str_to_bv('A'*(self.state.arch.bits()//8))
+
     def store(self, address, value: BV, endness='big'):
         if isinstance(address, int):
             address = BVV(address, self.state.arch.bits())
+        else:
+            if self.state.solver.satisfiable(extra_constraints=[
+                address == self.state.mem.get_target_value()
+            ]):
+                logger.log_error(f"EXPLOITABLE: found controlled write address: {address} min: {hex(self.state.solver.min(address))} max: {hex(self.state.solver.max(address))} @ {hex(self.state.get_ip())}")
+                self.state.executor.put_in_exploitable(
+                    self.state, "memory corruption"
+                )
         assert address.size == self.bits, f"store: address size must be {self.bits}, got {address.size}"
 
         for f in self.store_hooks:
@@ -364,11 +385,24 @@ class Memory(MemoryAbstract):
 
     def _load(self, page_address: int, page_index: BV):
         assert page_address in self.pages, f"_load: page 0x{page_address:x} not mapped"
+        if isinstance(page_index, int) or isinstance(page_index, BVV):
+            pi = page_index if isinstance(page_index, int) else page_index.value
+            if pi > self.pages[page_address].real_size:
+                logger.log_error(f"Reading past allocated buffer, index = {hex(pi)}, buffer real_size = {hex(self.pages[page_address].real_size)}")
+                raise exceptions.UnmappedRead(self.state.get_ip())
         return self.pages[page_address].load(page_index)
 
     def load(self, address, size: int, endness='big'):
         if isinstance(address, int):
             address = BVV(address, self.state.arch.bits())
+        else:
+            if self.state.solver.satisfiable(extra_constraints=[
+                address == self.get_target_value()
+            ]):
+                logger.log_error(f"EXPLOITABLE: found controlled load address: {address} min: {hex(self.state.solver.min(address))} max: {hex(self.state.solver.max(address))} @ {hex(self.state.get_ip())}")
+                self.state.executor.put_in_exploitable(
+                    self.state, "memory disclosure"
+                )
         assert address.size == self.bits, f"load: address size must be {self.bits}, got {address.size}"
 
         for f in self.load_hooks:
@@ -479,7 +513,7 @@ class Memory(MemoryAbstract):
         num_pages = (size + self.page_size - 1) >> self.index_bits
         page_addr = self.get_unmapped(num_pages)
         full_addr = page_addr << self.index_bits
-        self.mmap(full_addr, num_pages * self.page_size, init)
+        self.mmap(full_addr, num_pages * self.page_size, init, real_size=size)
 
         return full_addr
 

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..utility.expr_wrap_util import symbolic, split_bv_in_list
+from ..utility import exceptions
 from ..expr.bitvector import BVS, BVV
 from .qmemview import QMemView
 
@@ -122,10 +123,13 @@ class MemoryView(QWidget):
     def _memwidget_callback(self, addr):
         if self.data.current_state is None:
             return "  "
-        v = self.data.current_state.mem.load(addr, 1)
-        if isinstance(v, BVV):
-            return "%02x" % v.value
-        return ".."
+        try:
+            v = self.data.current_state.mem.load(addr, 1)
+            if isinstance(v, BVV):
+                return "%02x" % v.value
+            return ".."
+        except exceptions.UnmappedRead as e:
+            return "<>"
 
     def _show_expression(self, address, expr):
         show_message_box("Expression at %s" %

@@ -205,6 +205,11 @@ class SymbolicExecutor(object):
             (msg, state)
         )
 
+    def put_in_exploitable(self, state, msg: str):
+        self.fringe.add_exploitable(
+            (msg, state)
+        )
+
     def extract_mergeable_with_current_state(self, to_merge):
         # returns the set of states that do not deviate from
         # the current state after executing the current instruction
@@ -261,6 +266,9 @@ class SymbolicExecutor(object):
     def update_ip(self, funcion_name, new_llil_ip):
         if new_llil_ip is None:
             logger.log_debug(f"new_llil_ip is None")
+            if self.state.solver.satisfiable(extra_constraints =
+                                         [ self.state.regs.pc == self.state.mem.get_target_value()]):
+                self.put_in_exploitable(self.state, "controlled pc")
             raise exceptions.UnconstrainedIp(self.ip)
 
         self.llil_ip = new_llil_ip
