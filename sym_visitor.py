@@ -503,19 +503,12 @@ class SymbolicVisitor(BNILVisitor):
         dest = self.visit(expr.dest,level+1)
         dest_fun_name = None
 
-        sym = get_from_code_refs(self.executor.view, self.executor.ip)
-        if sym is None:
-            sym = get_from_type_refs(self.executor.view, self.executor.ip)
-            if sym is not None:
-                dest = MockValue(sym.address)
-                dest_fun_name = self.executor.bncache.get_function_name(dest.value)
-        else:
-            dest = MockValue(sym.address)
-            dest_fun_name = self.executor.bncache.get_function_name(dest.value)
+        sym_from_code_refs = get_from_code_refs(self.executor.view, self.executor.ip, True)
+        sym_from_type_refs = get_from_type_refs(self.executor.view, self.executor.ip, True)
 
-        if dest_fun_name is None and symbolic(dest):
+        if sym_from_type_refs is None and sym_from_code_refs is None and symbolic(dest):
+            logger.log_debug(f"symbolic dest {dest} at {expr}")
             raise UnconstrainedIp(self.executor.ip)
-
         if "thumb" in self.executor.view.arch.name and (dest.value & 1 != 0):
             dest.value = dest.value - 1
         curr_fun_name = self.executor.bncache.get_function_name(
