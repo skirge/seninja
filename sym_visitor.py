@@ -604,6 +604,10 @@ class SymbolicVisitor(BNILVisitor):
 
     def visit_LLIL_TAILCALL(self, expr,level):
         dest = self.visit(expr.dest,level+1)
+
+        if symbolic(dest):
+            raise UnconstrainedIp()
+
         dest_fun_name = None
         sym_from_code_refs = get_from_code_refs(self.executor.view, self.executor.ip, True)
         sym_from_type_refs = get_from_type_refs(self.executor.view, self.executor.ip, True)
@@ -1001,6 +1005,9 @@ class SymbolicVisitor(BNILVisitor):
             return True
         else:
             raise ExitException()
+
+        self.executor._wasjmp = True
+        return True
 
     def visit_LLIL_PUSH(self, expr,level):
         src = self.visit(expr.src,level+1)
