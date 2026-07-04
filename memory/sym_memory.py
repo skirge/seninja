@@ -13,14 +13,16 @@ InitData = namedtuple('InitData', ['bytes', 'index'])
 
 
 class Page(object):
-    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None):
+    def __init__(self, addr: int, size: int = 0x1000, bits: int = 12, init: InitData = None, writable = True):
         self.addr = addr
         self.size = size
         self.bits = bits
         self.dirty = False
+        self.writable = writable
         self.mo = MemoryObj("%Xh" % addr, bits)
         self._init = init
         self._lazycopy = 0
+
 
     def lazy_init(self):
         if self._init is not None:
@@ -33,6 +35,8 @@ class Page(object):
             self._init = None
 
     def store(self, index: BV, value: BV, condition: Bool = None):
+        if not self.writable:
+            logger.log_debug(f"Writing to not writable page at index = {index}")
         self.dirty = True
 
         self.lazy_init()
@@ -97,7 +101,7 @@ class Memory(MemoryAbstract):
 
         return self.pages[page_addr].mo.bvarray.get_assertions()
 
-    def mmap(self, address: int, size: int, init: InitData = None):
+    def mmap(self, address: int, size: int, init: InitData = None, writable = True):
         assert address % self.page_size == 0, f"mmap: address 0x{address:x} not aligned to page_size 0x{self.page_size:x}"
         assert size % self.page_size == 0, f"mmap: size 0x{size:x} not multiple of page_size 0x{self.page_size:x}"
 
@@ -139,9 +143,12 @@ class Memory(MemoryAbstract):
                     data_index_f = data_index_i + self.page_size
             if a not in self.pages:
                 self.pages[a] = Page(
-                    a, self.page_size, self.index_bits, init_data)
+                    a, self.page_size, self.index_bits, init_data, writable)
             else:
                 logger.log_info("remapping the same page '%s'" % hex(a))
+                if self.pages[a].writable != writable:
+                    logger.log_info("changing writable flag for page '%s'" % hex(a))
+                    self.pages[a].writable = writable
             i += 1
 
     def is_mapped(self, address: int):

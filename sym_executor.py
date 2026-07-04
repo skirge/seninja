@@ -82,7 +82,8 @@ class SymbolicExecutor(object):
                 self.state.address_page_aligned(start),
                 self.state.address_page_aligned(end + self.state.mem.page_size - 1) -
                 self.state.address_page_aligned(start),
-                InitData(data, start - self.state.address_page_aligned(start))
+                InitData(data, start - self.state.address_page_aligned(start)),
+                segment.writable
             )
         logger.log_info("loading finished!")
 
@@ -259,6 +260,7 @@ class SymbolicExecutor(object):
 
     def update_ip(self, funcion_name, new_llil_ip):
         if new_llil_ip is None:
+            logger.log_debug(f"new_llil_ip is None")
             raise exceptions.UnconstrainedIp(self.ip)
 
         self.llil_ip = new_llil_ip
